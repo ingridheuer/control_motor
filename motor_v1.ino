@@ -12,9 +12,9 @@
 // ======= Variables para leer el Serial
 const byte numChars = 32;
 char receivedChars[numChars];
-char tempChars[numChars];        // temporary array for use when parsing
+char tempChars[numChars];        // array temporario para parsing
 
-// variables to hold the parsed data
+// variables para parsing
 char message[numChars] = {0};
 int integer_input = 0;
 String command;
@@ -24,15 +24,15 @@ boolean newData = false;
 // =======
 
 
+
 // ======== Variables para inicializar el motor
 int initial_homing = -1; //va a arrancar moviendose un poquito para atrás
-int initial_ending = 1;
 long left = -1;
 long right = 1;
 bool at_home = false;
-bool at_end = false;
 int Position;
-int steps_to_end = 800; //lo que corresponda a media vuelta (configurar esto)
+int backlash_0;
+int backlash_1;
 
 //importante que estén todos cableados como pullup (la resistencia va al positivo)
 #define greenpin 12
@@ -60,6 +60,7 @@ void ISRhome() {
   }
 }
 
+
 void ISRend() {
   if (!digitalRead(end_switch)) {
     stepper.stop();
@@ -86,7 +87,7 @@ void setup() {
   pinMode(redpin, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(home_switch), ISRhome, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
 
   delay(10);
   homing();
@@ -95,8 +96,8 @@ void setup() {
 
 
 void loop() {
-  //===== comandos via serial
 
+  //===== se ejecutan solo si le hablamos por serial
   readserial();
   if (newData == true) {
     strcpy(tempChars, receivedChars);
@@ -105,63 +106,91 @@ void loop() {
     parseData();
     showParsedData();
     newData = false;
+    setpoint();
+    measure();
+    rehome();
+    setspeed();
+    setaccel();
 
-    if (command.equals("run")) {
-      digitalWrite(greenpin, HIGH);
-      stepper.moveTo(integer_input);
-      stepper.runToPosition();
-      digitalWrite(greenpin, LOW);
-    }
-    else if (command.equals("rehome")) {
-      at_home = false;
-      homing();
-    }
-    else if (command.equals("current position")) {
-      Position = stepper.currentPosition();
-      Serial.print(Position);
-    }
-    else if (command.equals("speed")) {
-      stepper.setMaxSpeed(integer_input);
-    }
-    else if (command.equals("ida y vuelta")) {
-      ida_y_vuelta();
-    }
+      //==== comandos via botonera
+      //==== revisar si no conviene que use move()
+      /*
+          //se mueve mientras se apreta el botón
+          if (!digitalRead(right_button)){
+            right++;
+            stepper.moveTo(right);
+            stepper.run();
+          }
+
+          if (!digitalRead(left_button)){
+            left--;
+            stepper.moveTo(left);
+            stepper.run();
+          }
+
+          if(!digitalRead(home_button)){
+            homing();
+          }
+
+          if (stepper.isRunning()){
+            digitalWrite(greenpin,HIGH);
+          }
+          else
+          {
+            digitalWrite(greenpin,LOW);
+          }
+
+    */
   }
 
-  //==== comandos via botonera
-  /*
-      //se mueve mientras se apreta el botón
-      if (!digitalRead(right_button)){
-        right++;
-        stepper.moveTo(right);
-        stepper.run();
-      }
-
-      if (!digitalRead(left_button)){
-        left--;
-        stepper.moveTo(left);
-        stepper.run();
-      }
-
-      if(!digitalRead(home_button)){
-        homing();
-      }
-
-      if (stepper.isRunning()){
-        digitalWrite(greenpin,HIGH);
-      }
-      else
-      {
-        digitalWrite(greenpin,LOW);
-      }
-
-  */
-
+  //============ se ejecuta en cada loop
+  run_onestep();
+  if (stepper.isRunning()) {
+    digitalWrite(greenpin, HIGH);
+  }
+  else
+  {
+    digitalWrite(greenpin, LOW);
+  }
 }
 
-//============= 
-//Funciones de movimiento 
+//=============
+//Funciones de movimiento
 //==============
+void run_onestep() {
+  stepper.run();
+  Position = stepper.currentPosition();
+  if (Position == 0){
+    at_home = true;
+  }
+  else{
+    at_home = false;
+  }
+}
+
+void measure() {
+  if (command == "measure") {
+    Serial.println(Position);
+  }
+}
+
+void setpoint() {
+  if (command == "setpoint") {
+    stepper.moveTo(integer_input);
+  }
+}
+
+void setspeed() {
+  if (command == "setspeed") {
+    stepper.setMaxSpeed(integer_input);
+  }
+}
+
+void setaccel() {
+  if (command == "setaccel") {
+    stepper.setAcceleration(integer_input);
+  }
+}
 
 void homing() {
   if (!at_home) {
@@ -191,60 +220,22 @@ void homing() {
     }
 
     //soltó el switch, fin del homing
+    backlash_1 = stepper.currentPosition();
     stepper.setCurrentPosition(0);
     Serial.print("Done Homing \n");
   }
 
   at_home = true;
   digitalWrite(greenpin, LOW);
+  Serial.println("Backlash: ");
+  Serial.println(backlash_1);
 }
 
-void to_end() {
-  if (!at_end) {
-    
-    delay(5);
-    Serial.print("Going to end \n");
-
-    //se va a mover un pasito a la vez mientras el switch no esté activado
-    while (digitalRead(end_switch)) {
-      digitalWrite(greenpin, HIGH);
-      stepper.moveTo(initial_ending);
-      initial_ending++;
-      stepper.run();
-      delay(5);
-    }
-
-    //una vez que activó el switch le decimos que ese es el 180
-
-    stepper.setCurrentPosition(steps_to_end);
-    initial_ending = -1; //ahora va para el otro lado hasta que suelta el switch
-
-    while (!digitalRead(end_switch)) {
-      stepper.moveTo(initial_ending);
-      stepper.run();
-      initial_ending--;
-      delay(5);
-    }
-
-    //soltó el switch, fin del homing
-    stepper.setCurrentPosition(steps_to_end); //configurar esto
-    Serial.print("At end \n");
+void rehome(){
+  if (command == "rehome"){
+    homing();
   }
-
-  at_end = true;
-  digitalWrite(greenpin, LOW);
 }
-
-void ida_y_vuelta() {
-  homing();
-  Serial.print("At start \n");
-  to_end();
-  Serial.print("At end \n");
-  at_home = false;
-  homing();
-  Serial.print("Done \n");
-}
-
 
 
 //========================
