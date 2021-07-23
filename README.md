@@ -1,17 +1,21 @@
 # Control de motor stepper con Arduino
 
 ## Qué hace (a 20/7):
-+ Comandos por serial
-+ Movimiento continuo y homing con botonera
-+ Homing automático con microswitches
-+ Config. de velocidad por serial
-+ Config. de aceleración por serial
-+ Interrupción por microswitches
-+ Feedback de la posición (en pasos) respecto a un 0 (home)
++ Homing automático con microswitch
++ Comandos por serial:
+  - Config de velocidad y aceleración
+  - Setpoint
+  - Homing
+  - Medir posición (en pasos, respecto al home)
+  - Media vuelta
++ Rutina de interrupción por microswitches
++ Medir posición en instante arbitrario (no bloquea)
++ Calcula backlash en homing (provisorio, ver si hay que cambiar el sistema de homing)
++ Media vuelta automática
++ Comandos básicos con botonera: movimiento, dirección y homing
 
 ## Qué falta (a 20/7):
 + Interfaz con labview
-+ Media vuelta automática sin switches
 + Mediciones configuradas por usuario (ver labview)
 + Probar todos los comandos de la botonera (me faltan cables)
 + Ajustar por reducción (labview?)
