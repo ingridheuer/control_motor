@@ -23,7 +23,8 @@ boolean newData = false;
 
 // =======
 
-
+enum states {DISABLED, ENABLED, TOSTART, TOEND, INIT};
+uint8_t state = DISABLED;
 
 // ======== Variables para inicializar el motor
 int initial_homing = -1; //va a arrancar moviendose un poquito para atrás
@@ -31,8 +32,9 @@ long left = -1;
 long right = 1;
 bool at_home = false;
 int Position;
-int backlash_0;
-int backlash_1;
+int backlash;
+int Start = 0;
+int Stop = 0;
 
 //importante que estén todos cableados como pullup (la resistencia va al positivo)
 #define greenpin 12
@@ -87,7 +89,7 @@ void setup() {
   pinMode(redpin, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(home_switch), ISRhome, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
 
   delay(10);
   homing();
@@ -111,39 +113,45 @@ void loop() {
     rehome();
     setspeed();
     setaccel();
+    Start = set_start();
+    Stop = set_stop();
+    if (command == "automed"){
+      state = ENABLED;
+    }
 
-      //==== comandos via botonera
-      //==== revisar si no conviene que use move()
-      /*
-          //se mueve mientras se apreta el botón
-          if (!digitalRead(right_button)){
-            right++;
-            stepper.moveTo(right);
-            stepper.run();
-          }
+    //==== comandos via botonera
+    //==== revisar si no conviene que use move()
+    /*
+        //se mueve mientras se apreta el botón
+        if (!digitalRead(right_button)){
+          right++;
+          stepper.moveTo(right);
+          stepper.run();
+        }
 
-          if (!digitalRead(left_button)){
-            left--;
-            stepper.moveTo(left);
-            stepper.run();
-          }
+        if (!digitalRead(left_button)){
+          left--;
+          stepper.moveTo(left);
+          stepper.run();
+        }
 
-          if(!digitalRead(home_button)){
-            homing();
-          }
+        if(!digitalRead(home_button)){
+          homing();
+        }
 
-          if (stepper.isRunning()){
-            digitalWrite(greenpin,HIGH);
-          }
-          else
-          {
-            digitalWrite(greenpin,LOW);
-          }
+        if (stepper.isRunning()){
+          digitalWrite(greenpin,HIGH);
+        }
+        else
+        {
+          digitalWrite(greenpin,LOW);
+        }
 
     */
   }
 
   //============ se ejecuta en cada loop
+  automed();
   run_onestep();
   if (stepper.isRunning()) {
     digitalWrite(greenpin, HIGH);
@@ -152,6 +160,7 @@ void loop() {
   {
     digitalWrite(greenpin, LOW);
   }
+
 }
 
 //=============
@@ -160,10 +169,10 @@ void loop() {
 void run_onestep() {
   stepper.run();
   Position = stepper.currentPosition();
-  if (Position == 0){
+  if (Position == 0) {
     at_home = true;
   }
-  else{
+  else {
     at_home = false;
   }
 }
@@ -192,6 +201,24 @@ void setaccel() {
   }
 }
 
+int set_start(){
+  if (command == "setstart") {
+    Start = integer_input;
+    Serial.print("Start set at: ");
+    Serial.println(Start);
+    return Start;
+  }
+}
+
+int set_stop() {
+  if (command == "setstop") {
+    Stop = integer_input;
+    Serial.print("Stop set at: ");
+    Serial.println(Stop);
+    return Stop;
+  }
+}
+
 void homing() {
   if (!at_home) {
 
@@ -208,7 +235,7 @@ void homing() {
     }
 
     //una vez que activó el switch le decimos que ese es el 0
-
+    stepper.stop();
     stepper.setCurrentPosition(0);
     initial_homing = 1; //ahora va para el otro lado hasta que suelta el switch
 
@@ -220,7 +247,7 @@ void homing() {
     }
 
     //soltó el switch, fin del homing
-    backlash_1 = stepper.currentPosition();
+    backlash = stepper.currentPosition();
     stepper.setCurrentPosition(0);
     Serial.print("Done Homing \n");
   }
@@ -228,15 +255,56 @@ void homing() {
   at_home = true;
   digitalWrite(greenpin, LOW);
   Serial.println("Backlash: ");
-  Serial.println(backlash_1);
+  Serial.println(backlash);
 }
 
-void rehome(){
-  if (command == "rehome"){
+void rehome() {
+  if (command == "rehome") {
     homing();
   }
 }
 
+//ver si conviene que frene y espere un toque antes de retroceder
+void automed(){
+  switch(state){
+    
+    case DISABLED:
+      break;
+      
+    case ENABLED:
+        stepper.moveTo(Start);
+        Serial.println("Going to Start");
+        state = INIT;
+      break;
+
+    case INIT:
+      if (stepper.distanceToGo() == 0) {
+        Serial.println("At start");
+        delay(5);
+        Serial.println("Going to Stop");
+        stepper.moveTo(Stop);
+        state = TOEND;
+      }
+      break;
+
+    case TOEND:
+      if (stepper.distanceToGo() == 0){
+        Serial.println("At stop");
+        delay(5);
+        Serial.println("Returning to Start");
+        stepper.moveTo(Start);
+        state = TOSTART;
+      }
+      break;
+
+    case TOSTART:
+      if (stepper.distanceToGo() == 0) {
+        Serial.println("Finished");
+        state = DISABLED;
+        break;
+      }
+  }
+}
 
 //========================
 //Funciones de Serial
