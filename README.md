@@ -1,6 +1,6 @@
 # Control de motor stepper con Arduino
 
-## Qué hace (a 20/7):
+## Qué hace:
 + Homing automático con microswitch
 + Comandos por serial:
   - Config de velocidad y aceleración
@@ -16,7 +16,7 @@
 + Interfaz con labview
 + Ajustado por reducción 
 
-## Qué falta (a 20/7):
+## Qué falta:
 + Probar todos los comandos de la botonera (me faltan cables)
 + Ajustar por "juego" (labview?)
 + Feedback en ángulos (labview?)
