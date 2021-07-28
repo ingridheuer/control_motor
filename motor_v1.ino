@@ -106,7 +106,7 @@ void loop() {
     // this temporary copy is necessary to protect the original data
     //   because strtok() used in parseData() replaces the commas with \0
     parseData();
-    showParsedData();
+    //showParsedData();
     newData = false;
     setpoint();
     measure();
@@ -363,7 +363,7 @@ void parseData() {      // split the data into its parts
 
 void showParsedData() {
   Serial.print("Comando: ");
-  Serial.println(command);
-  Serial.print("Input: ");
+  Serial.print(command);
+  Serial.print(", Input: ");
   Serial.println(integer_input);
 }
