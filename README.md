@@ -8,7 +8,7 @@
   - Homing
   - Medir posición (en pasos, respecto al home)
   - Media vuelta
-+ Rutina de interrupción por microswitches
++ Rutina de interrupción con microswitches
 + Medir posición en instante arbitrario (no bloquea)
 + Calcula backlash en homing 
 + Media vuelta automática
@@ -18,8 +18,6 @@
 
 ## Qué falta:
 + Probar todos los comandos de la botonera (me faltan cables)
-+ Ajustar por "juego" (labview?)
-+ Feedback en ángulos (labview?)
 + Ajuste de velocidad y aceleración preseteados (se puede hacer desde aca, ver por labview)
 + Calibración (labview?)
 
