@@ -22,7 +22,7 @@ String command;
 boolean newData = false;
 // =======
 
-enum states {DISABLED, INIT, TOSTART, TOEND};
+enum states {DISABLED, INIT, WAITING_START, TOSTART, TOEND, WAITING_STOP};
 uint8_t state = DISABLED;
 
 // ======== Variables para inicializar el motor
@@ -38,6 +38,12 @@ int current_loops;
 int total_loops;
 int speed_ida = 500;
 int speed_vuelta = 500;
+
+unsigned long currentMillis;
+unsigned long startMillis;
+unsigned long stopMillis;
+
+long wait = 1000;
 // =========
 #define greenpin 12
 #define redpin 13
@@ -97,6 +103,7 @@ void setup() {
 
 void loop() {
 
+  currentMillis = millis();
   //===== se ejecutan solo si le hablamos por serial
   readserial();
   if (newData == true) {
@@ -118,7 +125,7 @@ void loop() {
       Serial.print("Speed ida set at: ");
       Serial.println(speed_ida);
     }
-    if (command == "speed_vuelta"){
+    if (command == "speed_vuelta") {
       speed_vuelta = integer_input;
       Serial.print("Speed vuelta set at: ");
       Serial.println(speed_vuelta);
@@ -133,13 +140,13 @@ void loop() {
       Serial.println("Automed init");
     }
 
-    if (command == "stop"){
+    if (command == "stop") {
       Serial.println("Stopping");
       stepper.stop();
       state = DISABLED;
     }
 
-    if (command == "state"){
+    if (command == "state") {
       Serial.println(state);
     }
 
@@ -168,7 +175,7 @@ void loop() {
   }
 
   //============ se ejecuta en cada loop
-  
+
   automed();
   run_onestep();
 
@@ -190,12 +197,12 @@ void run_onestep() {
   stepper.run();
   Position = stepper.currentPosition();
   /*
-  if (Position == 0) {
+    if (Position == 0) {
     at_home = true;
-  }
-  else {
+    }
+    else {
     at_home = false;
-  }*/
+    }*/
 }
 
 void measure() {
@@ -245,7 +252,7 @@ void set_stop() {
 }
 
 void rehome() {
-  if ((command == "rehome")){
+  if ((command == "rehome")) {
     Serial.println("Homing");
     digitalWrite(greenpin, HIGH);
 
@@ -269,11 +276,12 @@ void rehome() {
   }
 }
 
-void automed() {
+/*
+  void automed() {
   switch (state) {
 
     case DISABLED: //default
-        break;      
+      break;
 
     case INIT: //si ya se empezó el automed y se llegó al inicio, cambia el setpoint a Stop y pasa a TOEND
       if (stepper.distanceToGo() == 0) {
@@ -292,18 +300,76 @@ void automed() {
       break;
 
     case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
-      if (stepper.distanceToGo() == 0){
+      if (stepper.distanceToGo() == 0) {
         current_loops++;
-        if (current_loops == total_loops){
+        if (current_loops == total_loops) {
           state = DISABLED;
         }
-        else{
+        else {
+          state = INIT;
+        }
+      }
+      break;
+  }
+  }
+*/
+
+void automed() {
+  switch (state) {
+
+    case DISABLED: //default
+      break;
+
+    case INIT:
+      if (stepper.distanceToGo() == 0) {
+        Serial.println("Cambio a WAITING_START");
+        startMillis = currentMillis;
+        state = WAITING_START;
+      }
+      break;
+
+    case WAITING_START:
+      if (currentMillis - startMillis >= wait) {
+        Serial.println("Cambio a TOEND");
+        stepper.moveTo(Stop);
+        stepper.setMaxSpeed(speed_ida);
+        state = TOEND;
+      }
+      break;
+
+    case TOEND: 
+      if (stepper.distanceToGo() == 0) {
+        Serial.println("Cambio a WAITING_STOP");
+        stopMillis = currentMillis;
+        state = WAITING_STOP;
+      }
+      break;
+
+    case WAITING_STOP:
+      if (currentMillis - stopMillis >= wait){
+        Serial.println("Cambio a TOSTART");
+        stepper.moveTo(Start);
+        stepper.setMaxSpeed(speed_vuelta);
+        state = TOSTART;
+      }
+      break;
+
+    case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
+      if (stepper.distanceToGo() == 0) {
+        current_loops++;
+        if (current_loops == total_loops) {
+          Serial.println("Termine las vueltas, cambio a DISABLED");
+          state = DISABLED;
+        }
+        else {
+          Serial.println("Faltan vueltas, cambio a INIT");
           state = INIT;
         }
       }
       break;
   }
 }
+
 
 
 //========================
