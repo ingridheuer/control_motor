@@ -20,23 +20,25 @@ int integer_input = 0;
 String command;
 
 boolean newData = false;
-
 // =======
 
-enum states {DISABLED, ENABLED, TOSTART, TOEND, INIT};
+enum states {DISABLED, INIT, TOSTART, TOEND};
 uint8_t state = DISABLED;
 
 // ======== Variables para inicializar el motor
-int initial_homing = -1; //va a arrancar moviendose un poquito para atrás
+//int initial_homing = -1;
 long left = -1;
 long right = 1;
-bool at_home = false;
+//bool at_home = false;
 int Position;
 int backlash;
 int Start = 0;
-int Stop = 0;
-
-//importante que estén todos cableados como pullup (la resistencia va al positivo)
+int Stop = 1;
+int current_loops;
+int total_loops;
+int speed_ida = 500;
+int speed_vuelta = 500;
+// =========
 #define greenpin 12
 #define redpin 13
 #define home_switch 2
@@ -47,7 +49,7 @@ int Stop = 0;
 #define dir 4
 #define pulse 5
 
-//1=driver de 2 cables
+//1 = driver de 2 cables
 AccelStepper stepper(1, dir, pulse);
 
 //========== Rutinas de interrupción
@@ -55,6 +57,7 @@ AccelStepper stepper(1, dir, pulse);
 void ISRhome() {
   if (!digitalRead(home_switch)) {
     stepper.stop();
+    state = DISABLED;
     digitalWrite(redpin, HIGH);
   }
   else {
@@ -66,6 +69,7 @@ void ISRhome() {
 void ISRend() {
   if (!digitalRead(end_switch)) {
     stepper.stop();
+    state = DISABLED;
     digitalWrite(redpin, HIGH);
   }
   else {
@@ -77,11 +81,9 @@ void ISRend() {
 
 void setup() {
   Serial.begin(9600);
-  delay(5);
 
-  stepper.setMaxSpeed(100);
-  stepper.setAcceleration(50);
-  stepper.moveTo(-1);
+  stepper.setMaxSpeed(500);
+  stepper.setAcceleration(200);
 
   pinMode(home_switch, INPUT_PULLUP);
   pinMode(end_switch, INPUT_PULLUP);
@@ -90,10 +92,6 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(home_switch), ISRhome, CHANGE);
   attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
-
-  delay(10);
-  homing();
-
 }
 
 
@@ -102,22 +100,49 @@ void loop() {
   //===== se ejecutan solo si le hablamos por serial
   readserial();
   if (newData == true) {
-    strcpy(tempChars, receivedChars);
-    // this temporary copy is necessary to protect the original data
-    //   because strtok() used in parseData() replaces the commas with \0
+    strcpy(tempChars, receivedChars); //hacemos una copia temporal de lo que recibimos en tempChars para proteger los datos originales
     parseData();
-    //showParsedData();
     newData = false;
     setpoint();
     measure();
     rehome();
     setspeed();
     setaccel();
-    Start = set_start();
-    Stop = set_stop();
-    if (command == "automed"){
-      state = ENABLED;
+    set_start();
+    set_stop();
+    if (command == "backlash") {
+      Serial.println(backlash);
     }
+    if (command == "speed_ida") {
+      speed_ida = integer_input;
+      Serial.print("Speed ida set at: ");
+      Serial.println(speed_ida);
+    }
+    if (command == "speed_vuelta"){
+      speed_vuelta = integer_input;
+      Serial.print("Speed vuelta set at: ");
+      Serial.println(speed_vuelta);
+    }
+
+    //Manda el motor al inicio de la medición y cambia el estado a init. Resetea el contador de vueltas
+    if (command == "automed") {
+      total_loops = integer_input;
+      current_loops = 0;
+      stepper.moveTo(Start);
+      state = INIT;
+      Serial.println("Automed init");
+    }
+
+    if (command == "stop"){
+      Serial.println("Stopping");
+      stepper.stop();
+      state = DISABLED;
+    }
+
+    if (command == "state"){
+      Serial.println(state);
+    }
+
 
     //==== comandos via botonera
     //==== revisar si no conviene que use move()
@@ -139,20 +164,14 @@ void loop() {
           homing();
         }
 
-        if (stepper.isRunning()){
-          digitalWrite(greenpin,HIGH);
-        }
-        else
-        {
-          digitalWrite(greenpin,LOW);
-        }
-
     */
   }
 
   //============ se ejecuta en cada loop
+  
   automed();
   run_onestep();
+
   if (stepper.isRunning()) {
     digitalWrite(greenpin, HIGH);
   }
@@ -166,15 +185,17 @@ void loop() {
 //=============
 //Funciones de movimiento
 //==============
+
 void run_onestep() {
   stepper.run();
   Position = stepper.currentPosition();
+  /*
   if (Position == 0) {
     at_home = true;
   }
   else {
     at_home = false;
-  }
+  }*/
 }
 
 void measure() {
@@ -186,125 +207,104 @@ void measure() {
 void setpoint() {
   if (command == "setpoint") {
     stepper.moveTo(integer_input);
+    Serial.print("Setpoint: ");
+    Serial.println(integer_input);
   }
 }
 
 void setspeed() {
   if (command == "setspeed") {
     stepper.setMaxSpeed(integer_input);
+    Serial.print("Speed set: ");
+    Serial.println(integer_input);
   }
 }
 
 void setaccel() {
   if (command == "setaccel") {
     stepper.setAcceleration(integer_input);
+    Serial.print("Accel set: ");
+    Serial.println(integer_input);
   }
 }
 
-int set_start(){
+void set_start() {
   if (command == "setstart") {
     Start = integer_input;
     Serial.print("Start set at: ");
     Serial.println(Start);
-    return Start;
   }
 }
 
-int set_stop() {
+void set_stop() {
   if (command == "setstop") {
     Stop = integer_input;
     Serial.print("Stop set at: ");
     Serial.println(Stop);
-    return Stop;
   }
-}
-
-void homing() {
-  if (!at_home) {
-
-    delay(5);
-    Serial.print("Start homing \n");
-
-    //se va a mover un pasito a la vez mientras el switch no esté activado
-    while (digitalRead(home_switch)) {
-      digitalWrite(greenpin, HIGH);
-      stepper.moveTo(initial_homing);
-      initial_homing--;
-      stepper.run();
-      delay(5);
-    }
-
-    //una vez que activó el switch le decimos que ese es el 0
-    stepper.stop();
-    stepper.setCurrentPosition(0);
-    initial_homing = 1; //ahora va para el otro lado hasta que suelta el switch
-
-    while (!digitalRead(home_switch)) {
-      stepper.moveTo(initial_homing);
-      stepper.run();
-      initial_homing++;
-      delay(5);
-    }
-
-    //soltó el switch, fin del homing
-    backlash = stepper.currentPosition();
-    stepper.setCurrentPosition(0);
-    Serial.print("Done Homing \n");
-  }
-
-  at_home = true;
-  digitalWrite(greenpin, LOW);
-  Serial.println("Backlash: ");
-  Serial.println(backlash);
 }
 
 void rehome() {
-  if (command == "rehome") {
-    homing();
+  if ((command == "rehome")){
+    Serial.println("Homing");
+    digitalWrite(greenpin, HIGH);
+
+    while (digitalRead(home_switch)) {
+      stepper.move(-1);
+      stepper.run();
+    }
+
+    //stepper wait ==========
+    stepper.setCurrentPosition(0); //para medir el backlash
+
+    while (!digitalRead(home_switch)) {
+      stepper.move(1);
+      stepper.run();
+    }
+
+    backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
+    stepper.setCurrentPosition(0);
+    digitalWrite(greenpin, LOW);
+    //at_home = true;
   }
 }
 
-//ver si conviene que frene y espere un toque antes de retroceder
-void automed(){
-  switch(state){
-    
-    case DISABLED:
-      break;
-      
-    case ENABLED:
-        stepper.moveTo(Start);
-        Serial.println("Going to Start");
-        state = INIT;
-      break;
+void automed() {
+  switch (state) {
 
-    case INIT:
+    case DISABLED: //default
+        break;      
+
+    case INIT: //si ya se empezó el automed y se llegó al inicio, cambia el setpoint a Stop y pasa a TOEND
       if (stepper.distanceToGo() == 0) {
-        Serial.println("At start");
-        delay(5);
-        Serial.println("Going to Stop");
         stepper.moveTo(Stop);
+        stepper.setMaxSpeed(speed_ida);
         state = TOEND;
       }
       break;
 
-    case TOEND:
-      if (stepper.distanceToGo() == 0){
-        Serial.println("At stop");
-        delay(5);
-        Serial.println("Returning to Start");
+    case TOEND: //idem pero si llegó al final, pasa a TOSTART
+      if (stepper.distanceToGo() == 0) {
         stepper.moveTo(Start);
+        stepper.setMaxSpeed(speed_vuelta);
         state = TOSTART;
       }
       break;
 
-    case TOSTART:
-      if (stepper.distanceToGo() == 0) {
-        Serial.println("Finished");
-        state = DISABLED;
-        break;
+    case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
+      if (stepper.distanceToGo() == 0){
+        current_loops++;
+        if (current_loops == total_loops){
+          state = DISABLED;
+        }
+        else{
+          state = INIT;
+        }
       }
+      break;
   }
 }
+
 
 //========================
 //Funciones de Serial
@@ -356,14 +356,4 @@ void parseData() {      // split the data into its parts
 
   command = String(message);
 
-}
-
-
-//============
-
-void showParsedData() {
-  Serial.print("Comando: ");
-  Serial.print(command);
-  Serial.print(", Input: ");
-  Serial.println(integer_input);
 }
