@@ -6,59 +6,81 @@
    Automatización y control del electroimán del laboratorio de bajas temperaturas
 */
 
-//librería para control de steppers
-#include <AccelStepper.h>
+#include <AccelStepper.h> //librería para control de steppers
 
-// ======= Variables para leer el Serial
+//Defino los pins que voy a usar y variables de posición
+//Nota: home_switch y end_switch tienen que ser pines 2 y 3 si o si,
+//porque son los únicos disponibles para interrupciones
+const byte home_switch = 2,
+           end_switch = 3,
+           dir = 4,
+           pulse = 5,
+           right_button = 6,
+           left_button = 7,
+           stop_button = 8,
+           home_button = 9,
+           greenpin = 10,
+           redpin = 11;
+           
+long Position; //long para evitar overflow porque usamos microstepping, son valores grandes (máx. 540000)
+int backlash; //el "juego" del motor al cambiar de dirección
+
+//var para botones que todavía no usamos
+//long left;
+//long right;
+
+//Creamos el objeto stepper
+AccelStepper stepper(1, dir, pulse); // 1 -> driver de 2 cables
+
+//=====================================
+// Variables para movimiento automático
+//=====================================
+
+//Definimos los estados que puede tomar el programa cuando está en modo automático
+enum states
+{
+  DISABLED, INIT, WAITING_START, TOSTART, TOEND, WAITING_STOP
+};
+
+//Creamos una variable estado, que solo puede tomar los valores de "estados"
+//La inicializamos como DISABLED
+states state = DISABLED; 
+
+long Start; //donde empieza el recorrido
+long Stop; //donde termina
+int current_loops; //vueltas que dio hasta ahora
+int total_loops; //las que tiene que dar
+int speed_ida;   
+int speed_vuelta;
+
+// Millis = tiempo en milisegundos desde que arranca el programa
+// Lo usamos para que el motor espere al final del recorrido antes de cambiar de dirección
+// Nota: unsigned long porque son valores grandes, siempre positivos y si hubiera overflow queremos que
+// se resetee a 0
+unsigned long currentMillis; //tiempo actual
+unsigned long startMillis; //tiempo al principío del recorrido
+unsigned long stopMillis; //tiempo al final
+const long wait = 1000;  //tiempo que tiene que esperar
+
+//===========================
+// Variables para leer Serial
+//===========================
+
 const byte numChars = 32;
 char receivedChars[numChars];
-char tempChars[numChars];        // array temporario para parsing
+char tempChars[numChars];
 
-// variables para parsing
+// Variables para guardar el comando
 char message[numChars] = {0};
 int integer_input = 0;
 String command;
 
-boolean newData = false;
-// =======
+// Si entraron datos por serial o no
+bool newData = false;
 
-enum states {DISABLED, INIT, WAITING_START, TOSTART, TOEND, WAITING_STOP};
-uint8_t state = DISABLED;
-
-// ======== Variables para inicializar el motor
-//int initial_homing = -1;
-long left = -1;
-long right = 1;
-//bool at_home = false;
-int Position;
-int backlash;
-int Start = 0;
-int Stop = 1;
-int current_loops;
-int total_loops;
-int speed_ida = 500;
-int speed_vuelta = 500;
-
-unsigned long currentMillis;
-unsigned long startMillis;
-unsigned long stopMillis;
-
-long wait = 1000;
-// =========
-#define greenpin 12
-#define redpin 13
-#define home_switch 2
-#define end_switch 3
-#define right_button 8
-#define left_button 9
-#define home_button 10
-#define dir 4
-#define pulse 5
-
-//1 = driver de 2 cables
-AccelStepper stepper(1, dir, pulse);
-
-//========== Rutinas de interrupción
+//=========================
+// Rutinas de interrupción
+//=========================
 
 void ISRhome() {
   if (!digitalRead(home_switch)) {
@@ -189,21 +211,97 @@ void loop() {
 
 }
 
-//=============
-//Funciones de movimiento
-//==============
+//=========================
+// Funciones de movimiento
+//=========================
 
 void run_onestep() {
   stepper.run();
   Position = stepper.currentPosition();
-  /*
-    if (Position == 0) {
-    at_home = true;
-    }
-    else {
-    at_home = false;
-    }*/
 }
+
+void rehome() {
+  if ((command == "rehome")) {
+    Serial.println("Homing");
+    digitalWrite(greenpin, HIGH);
+
+    while (digitalRead(home_switch)) {
+      stepper.move(-1);
+      stepper.run();
+    }
+
+    stepper.setCurrentPosition(0); //para medir el backlash
+
+    while (!digitalRead(home_switch)) {
+      stepper.move(1);
+      stepper.run();
+    }
+
+    backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
+    stepper.setCurrentPosition(0);
+    digitalWrite(greenpin, LOW);
+  }
+}
+
+void automed() {
+  switch (state) {
+
+    case DISABLED: //default
+      break;
+
+    case INIT:
+      if (stepper.distanceToGo() == 0) {
+        //Serial.println("Cambio a WAITING_START");
+        startMillis = currentMillis;
+        state = WAITING_START;
+      }
+      break;
+
+    case WAITING_START:
+      if (currentMillis - startMillis >= wait) {
+        //Serial.println("Cambio a TOEND");
+        stepper.moveTo(Stop);
+        stepper.setMaxSpeed(speed_ida);
+        state = TOEND;
+      }
+      break;
+
+    case TOEND:
+      if (stepper.distanceToGo() == 0) {
+        //Serial.println("Cambio a WAITING_STOP");
+        stopMillis = currentMillis;
+        state = WAITING_STOP;
+      }
+      break;
+
+    case WAITING_STOP:
+      if (currentMillis - stopMillis >= wait) {
+        //Serial.println("Cambio a TOSTART");
+        stepper.moveTo(Start);
+        stepper.setMaxSpeed(speed_vuelta);
+        state = TOSTART;
+      }
+      break;
+
+    case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
+      if (stepper.distanceToGo() == 0) {
+        current_loops++;
+        if (current_loops == total_loops) {
+          //Serial.println("Termine las vueltas, cambio a DISABLED");
+          state = DISABLED;
+        }
+        else {
+          //Serial.println("Faltan vueltas, cambio a INIT");
+          state = INIT;
+        }
+      }
+      break;
+  }
+}
+
+//====================================
+// Funciones para comandos de LabVIEW
+//====================================
 
 void measure() {
   if (command == "measure") {
@@ -251,130 +349,11 @@ void set_stop() {
   }
 }
 
-void rehome() {
-  if ((command == "rehome")) {
-    Serial.println("Homing");
-    digitalWrite(greenpin, HIGH);
 
-    while (digitalRead(home_switch)) {
-      stepper.move(-1);
-      stepper.run();
-    }
+//=========================
+// Comunicación por Serial
+//=========================
 
-    //stepper wait ==========
-    stepper.setCurrentPosition(0); //para medir el backlash
-
-    while (!digitalRead(home_switch)) {
-      stepper.move(1);
-      stepper.run();
-    }
-
-    backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
-    stepper.setCurrentPosition(0);
-    digitalWrite(greenpin, LOW);
-    //at_home = true;
-  }
-}
-
-/*
-  void automed() {
-  switch (state) {
-
-    case DISABLED: //default
-      break;
-
-    case INIT: //si ya se empezó el automed y se llegó al inicio, cambia el setpoint a Stop y pasa a TOEND
-      if (stepper.distanceToGo() == 0) {
-        stepper.moveTo(Stop);
-        stepper.setMaxSpeed(speed_ida);
-        state = TOEND;
-      }
-      break;
-
-    case TOEND: //idem pero si llegó al final, pasa a TOSTART
-      if (stepper.distanceToGo() == 0) {
-        stepper.moveTo(Start);
-        stepper.setMaxSpeed(speed_vuelta);
-        state = TOSTART;
-      }
-      break;
-
-    case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
-      if (stepper.distanceToGo() == 0) {
-        current_loops++;
-        if (current_loops == total_loops) {
-          state = DISABLED;
-        }
-        else {
-          state = INIT;
-        }
-      }
-      break;
-  }
-  }
-*/
-
-void automed() {
-  switch (state) {
-
-    case DISABLED: //default
-      break;
-
-    case INIT:
-      if (stepper.distanceToGo() == 0) {
-        Serial.println("Cambio a WAITING_START");
-        startMillis = currentMillis;
-        state = WAITING_START;
-      }
-      break;
-
-    case WAITING_START:
-      if (currentMillis - startMillis >= wait) {
-        Serial.println("Cambio a TOEND");
-        stepper.moveTo(Stop);
-        stepper.setMaxSpeed(speed_ida);
-        state = TOEND;
-      }
-      break;
-
-    case TOEND: 
-      if (stepper.distanceToGo() == 0) {
-        Serial.println("Cambio a WAITING_STOP");
-        stopMillis = currentMillis;
-        state = WAITING_STOP;
-      }
-      break;
-
-    case WAITING_STOP:
-      if (currentMillis - stopMillis >= wait){
-        Serial.println("Cambio a TOSTART");
-        stepper.moveTo(Start);
-        stepper.setMaxSpeed(speed_vuelta);
-        state = TOSTART;
-      }
-      break;
-
-    case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
-      if (stepper.distanceToGo() == 0) {
-        current_loops++;
-        if (current_loops == total_loops) {
-          Serial.println("Termine las vueltas, cambio a DISABLED");
-          state = DISABLED;
-        }
-        else {
-          Serial.println("Faltan vueltas, cambio a INIT");
-          state = INIT;
-        }
-      }
-      break;
-  }
-}
-
-
-
-//========================
-//Funciones de Serial
-//========================
 
 void readserial() {
   static boolean recvInProgress = false;
@@ -408,7 +387,6 @@ void readserial() {
   }
 }
 
-//============
 
 void parseData() {      // split the data into its parts
 
