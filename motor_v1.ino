@@ -22,12 +22,11 @@ const byte home_switch = 2,
            greenpin = 10,
            redpin = 11;
            
-long Position; //long para evitar overflow porque usamos microstepping, son valores grandes (máx. 540000)
-int backlash; //el "juego" del motor al cambiar de dirección
+long backlash; //el "juego" del motor al cambiar de dirección 
 
 //var para botones que todavía no usamos
-//long left;
-//long right;
+//int left;
+//int right;
 
 //Creamos el objeto stepper
 AccelStepper stepper(1, dir, pulse); // 1 -> driver de 2 cables
@@ -60,7 +59,7 @@ int speed_vuelta;
 unsigned long currentMillis; //tiempo actual
 unsigned long startMillis; //tiempo al principío del recorrido
 unsigned long stopMillis; //tiempo al final
-const long wait = 1000;  //tiempo que tiene que esperar
+const int wait = 1000;  //tiempo que tiene que esperar
 
 //===========================
 // Variables para leer Serial
@@ -73,6 +72,7 @@ char tempChars[numChars];
 // Variables para guardar el comando
 char message[numChars] = {0};
 int integer_input = 0;
+long long_input = 0;
 String command;
 
 // Si entraron datos por serial o no
@@ -199,7 +199,7 @@ void loop() {
   //============ se ejecuta en cada loop
 
   automed();
-  run_onestep();
+  stepper.run();
 
   if (stepper.isRunning()) {
     digitalWrite(greenpin, HIGH);
@@ -214,11 +214,6 @@ void loop() {
 //=========================
 // Funciones de movimiento
 //=========================
-
-void run_onestep() {
-  stepper.run();
-  Position = stepper.currentPosition();
-}
 
 void rehome() {
   if ((command == "rehome")) {
@@ -303,17 +298,18 @@ void automed() {
 // Funciones para comandos de LabVIEW
 //====================================
 
+
 void measure() {
   if (command == "measure") {
-    Serial.println(Position);
+    Serial.println(stepper.currentPosition());
   }
 }
 
 void setpoint() {
   if (command == "setpoint") {
-    stepper.moveTo(integer_input);
+    stepper.moveTo(long_input);
     Serial.print("Setpoint: ");
-    Serial.println(integer_input);
+    Serial.println(long_input);
   }
 }
 
@@ -335,7 +331,7 @@ void setaccel() {
 
 void set_start() {
   if (command == "setstart") {
-    Start = integer_input;
+    Start = long_input;
     Serial.print("Start set at: ");
     Serial.println(Start);
   }
@@ -343,7 +339,7 @@ void set_start() {
 
 void set_stop() {
   if (command == "setstop") {
-    Stop = integer_input;
+    Stop = long_input;
     Serial.print("Stop set at: ");
     Serial.println(Stop);
   }
@@ -394,10 +390,12 @@ void parseData() {      // split the data into its parts
 
   strtokIndx = strtok(tempChars, ",");     // get the first part - the string
   strcpy(message, strtokIndx); // copy it to message
+  command = String(message);
 
   strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
-  integer_input = atoi(strtokIndx);     // convert this part to an integer
+  integer_input = atoi(strtokIndx);     // convertimos a un int
 
-  command = String(message);
+  strtokIndx = strtok(NULL, ",");
+  long_input = atol(strtokIndx);  //convertimos a un long
 
 }
