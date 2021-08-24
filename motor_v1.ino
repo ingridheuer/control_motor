@@ -15,18 +15,24 @@ const byte home_switch = 2,
            end_switch = 3,
            dir = 4,
            pulse = 5,
-           right_button = 6,
-           left_button = 7,
-           stop_button = 8,
-           home_button = 9,
            greenpin = 10,
            redpin = 11;
-           
-long backlash; //el "juego" del motor al cambiar de dirección 
 
-//var para botones que todavía no usamos
-//int left;
-//int right;
+long backlash; //el "juego" del motor al cambiar de dirección
+
+struct pushButton {
+  const byte pin;
+  byte state;
+  unsigned long lastTimePressed;
+};
+
+pushButton rightButton = {6, HIGH, 0};
+pushButton leftButton = {7, HIGH, 0};
+pushButton homeButton = {8, HIGH, 0};
+pushButton stopButton = {9, HIGH, 0};
+
+int debounceDelay = 50;
+
 
 //Creamos el objeto stepper
 AccelStepper stepper(1, dir, pulse); // 1 -> driver de 2 cables
@@ -43,13 +49,13 @@ enum states
 
 //Creamos una variable estado, que solo puede tomar los valores de "estados"
 //La inicializamos como DISABLED
-states state = DISABLED; 
+states state = DISABLED;
 
 long Start; //donde empieza el recorrido
 long Stop; //donde termina
 int current_loops; //vueltas que dio hasta ahora
 int total_loops; //las que tiene que dar
-int speed_ida;   
+int speed_ida;
 int speed_vuelta;
 
 // Millis = tiempo en milisegundos desde que arranca el programa
@@ -115,6 +121,12 @@ void setup() {
 
   pinMode(home_switch, INPUT_PULLUP);
   pinMode(end_switch, INPUT_PULLUP);
+
+  pinMode(rightButton.pin, INPUT_PULLUP);
+  pinMode(leftButton.pin, INPUT_PULLUP);
+  pinMode(stopButton.pin, INPUT_PULLUP);
+  pinMode(homeButton.pin, INPUT_PULLUP);
+
   pinMode(greenpin, OUTPUT);
   pinMode(redpin, OUTPUT);
 
@@ -171,33 +183,16 @@ void loop() {
     if (command == "state") {
       Serial.println(state);
     }
-
-
-    //==== comandos via botonera
-    //==== revisar si no conviene que use move()
-    /*
-        //se mueve mientras se apreta el botón
-        if (!digitalRead(right_button)){
-          right++;
-          stepper.moveTo(right);
-          stepper.run();
-        }
-
-        if (!digitalRead(left_button)){
-          left--;
-          stepper.moveTo(left);
-          stepper.run();
-        }
-
-        if(!digitalRead(home_button)){
-          homing();
-        }
-
-    */
   }
 
   //============ se ejecuta en cada loop
-
+  
+  stateChangeDebounce(rightButton);
+  stateChangeDebounce(leftButton);
+  stateChangeDebounce(homeButton);
+  stateChangeDebounce(stopButton);
+  
+  buttonCommands();
   automed();
   stepper.run();
 
@@ -345,6 +340,39 @@ void set_stop() {
   }
 }
 
+//=============
+// Botones
+//=============
+
+void stateChangeDebounce(pushButton button) {
+  int reading = digitalRead(button.pin);
+
+  if (reading != button.state && currentMillis - button.lastTimePressed > debounceDelay) {
+    if (button.state == HIGH) {
+      button.state = LOW;
+    }
+    else {
+      button.state = HIGH;
+    }
+
+    button.lastTimePressed = currentMillis;
+  }
+}
+
+void buttonCommands() {
+  if (stopButton.state) {
+    stepper.stop();
+  }
+  if (homeButton.state) {
+    rehome();
+  }
+  if (rightButton.state) {
+    stepper.move(1);
+  }
+  if (leftButton.state) {
+    stepper.move(-1);
+  }
+}
 
 //=========================
 // Comunicación por Serial
