@@ -12,7 +12,7 @@
 //Nota: home_switch y end_switch tienen que ser pines 2 y 3 si o si,
 //porque son los únicos disponibles para interrupciones
 const byte home_switch = 2,
-           end_switch = 3,
+           //end_switch = 3,
            dir = 4,
            pulse = 5,
            greenpin = 10,
@@ -20,18 +20,18 @@ const byte home_switch = 2,
 
 long backlash; //el "juego" del motor al cambiar de dirección
 
-struct pushButton {
+typedef struct {
   const byte pin;
-  byte state;
-  unsigned long lastTimePressed;
-};
+  int currentState;
+  unsigned long lastDebounceTime;
+} pushButton;
 
 pushButton rightButton = {6, HIGH, 0};
 pushButton leftButton = {7, HIGH, 0};
 pushButton homeButton = {8, HIGH, 0};
 pushButton stopButton = {9, HIGH, 0};
 
-int debounceDelay = 50;
+long debounceDelay = 1000;
 
 
 //Creamos el objeto stepper
@@ -99,8 +99,8 @@ void ISRhome() {
   }
 }
 
-
-void ISRend() {
+/*
+  void ISRend() {
   if (!digitalRead(end_switch)) {
     stepper.stop();
     state = DISABLED;
@@ -109,8 +109,8 @@ void ISRend() {
   else {
     digitalWrite(redpin, LOW);
   }
-}
-
+  }
+*/
 //======================
 
 void setup() {
@@ -120,7 +120,7 @@ void setup() {
   stepper.setAcceleration(200);
 
   pinMode(home_switch, INPUT_PULLUP);
-  pinMode(end_switch, INPUT_PULLUP);
+  //pinMode(end_switch, INPUT_PULLUP);
 
   pinMode(rightButton.pin, INPUT_PULLUP);
   pinMode(leftButton.pin, INPUT_PULLUP);
@@ -131,7 +131,7 @@ void setup() {
   pinMode(redpin, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(home_switch), ISRhome, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(end_switch), ISRend, CHANGE);
 }
 
 
@@ -186,12 +186,27 @@ void loop() {
   }
 
   //============ se ejecuta en cada loop
-  
-  stateChangeDebounce(rightButton);
-  stateChangeDebounce(leftButton);
-  stateChangeDebounce(homeButton);
-  stateChangeDebounce(stopButton);
-  
+
+  /*
+    test(rightButton);
+    test(leftButton);
+    test(homeButton);
+    test(stopButton);
+  */
+
+  /*
+    buttonStateDebounce(rightButton);
+    buttonStateDebounce(leftButton);
+    buttonStateDebounce(homeButton);
+    buttonStateDebounce(stopButton);
+  */
+
+  rightButton.currentState = buttonStateDebounce(rightButton);
+  leftButton.currentState = buttonStateDebounce(leftButton);
+  homeButton.currentState = buttonStateDebounce(homeButton);
+  stopButton.currentState = buttonStateDebounce(stopButton);
+
+
   buttonCommands();
   automed();
   stepper.run();
@@ -241,7 +256,7 @@ void automed() {
 
     case INIT:
       if (stepper.distanceToGo() == 0) {
-        //Serial.println("Cambio a WAITING_START");
+        Serial.println("Cambio a WAITING_START");
         startMillis = currentMillis;
         state = WAITING_START;
       }
@@ -249,7 +264,7 @@ void automed() {
 
     case WAITING_START:
       if (currentMillis - startMillis >= wait) {
-        //Serial.println("Cambio a TOEND");
+        Serial.println("Cambio a TOEND");
         stepper.moveTo(Stop);
         stepper.setMaxSpeed(speed_ida);
         state = TOEND;
@@ -258,7 +273,7 @@ void automed() {
 
     case TOEND:
       if (stepper.distanceToGo() == 0) {
-        //Serial.println("Cambio a WAITING_STOP");
+        Serial.println("Cambio a WAITING_STOP");
         stopMillis = currentMillis;
         state = WAITING_STOP;
       }
@@ -266,7 +281,7 @@ void automed() {
 
     case WAITING_STOP:
       if (currentMillis - stopMillis >= wait) {
-        //Serial.println("Cambio a TOSTART");
+        Serial.println("Cambio a TOSTART");
         stepper.moveTo(Start);
         stepper.setMaxSpeed(speed_vuelta);
         state = TOSTART;
@@ -277,11 +292,11 @@ void automed() {
       if (stepper.distanceToGo() == 0) {
         current_loops++;
         if (current_loops == total_loops) {
-          //Serial.println("Termine las vueltas, cambio a DISABLED");
+          Serial.println("Termine las vueltas, cambio a DISABLED");
           state = DISABLED;
         }
         else {
-          //Serial.println("Faltan vueltas, cambio a INIT");
+          Serial.println("Faltan vueltas, cambio a INIT");
           state = INIT;
         }
       }
@@ -344,32 +359,43 @@ void set_stop() {
 // Botones
 //=============
 
-void stateChangeDebounce(pushButton button) {
+int buttonStateDebounce(pushButton button) {
   int reading = digitalRead(button.pin);
 
-  if (reading != button.state && currentMillis - button.lastTimePressed > debounceDelay) {
-    if (button.state == HIGH) {
-      button.state = LOW;
-    }
-    else {
-      button.state = HIGH;
-    }
+  if ((reading != button.currentState) && (millis() - button.lastDebounceTime >= debounceDelay)) {
+    button.lastDebounceTime = millis();
+    button.currentState = reading;
 
-    button.lastTimePressed = currentMillis;
+    if (reading == LOW) {
+      Serial.println("Pressed");
+    }
+    if (reading == HIGH) {
+      Serial.println("Released");
+    }
   }
+  return button.currentState;
 }
 
+
+
 void buttonCommands() {
-  if (stopButton.state) {
+  if (stopButton.toggled) {
+    Serial.println("Stop button pressed");
     stepper.stop();
+    state = DISABLED;
+    //stopButton.toggled = 0;
   }
-  if (homeButton.state) {
+  if (homeButton.toggled) {
+    Serial.println("Home button pressed");
     rehome();
+    //homeButton.toggled = 0;
   }
-  if (rightButton.state) {
+  if (!rightButton.currentState) {
+    Serial.println("+1");
     stepper.move(1);
   }
-  if (leftButton.state) {
+  if (!leftButton.currentState) {
+    Serial.println("-1");
     stepper.move(-1);
   }
 }
