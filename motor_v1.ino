@@ -42,14 +42,17 @@ AccelStepper stepper(1, dir, pulse); // 1 -> driver de 2 cables
 //=====================================
 
 //Definimos los estados que puede tomar el programa cuando está en modo automático
-enum states
+enum auto_states
 {
-  DISABLED, INIT, WAITING_START, TOSTART, TOEND, WAITING_STOP
+  AUTOMED_DISABLED, INIT, WAITING_START, TOSTART, TOEND, WAITING_STOP
 };
+auto_states auto_state = AUTOMED_DISABLED;
 
-//Creamos una variable estado, que solo puede tomar los valores de "estados"
-//La inicializamos como DISABLED
-states state = DISABLED;
+enum button_states
+{
+  BUTTONS_DISABLED, BUTTONS_ENABLED
+};
+button_states buttons_state = BUTTONS_ENABLED;
 
 long Start; //donde empieza el recorrido
 long Stop; //donde termina
@@ -62,6 +65,7 @@ int speed_vuelta;
 // Lo usamos para que el motor espere al final del recorrido antes de cambiar de dirección
 // Nota: unsigned long porque son valores grandes, siempre positivos y si hubiera overflow queremos que
 // se resetee a 0
+
 unsigned long currentMillis; //tiempo actual
 unsigned long startMillis; //tiempo al principío del recorrido
 unsigned long stopMillis; //tiempo al final
@@ -91,7 +95,7 @@ bool newData = false;
 void ISRhome() {
   if (!digitalRead(home_switch)) {
     stepper.stop();
-    state = DISABLED;
+    auto_state = AUTOMED_DISABLED;
     digitalWrite(redpin, HIGH);
   }
   else {
@@ -103,7 +107,7 @@ void ISRhome() {
   void ISRend() {
   if (!digitalRead(end_switch)) {
     stepper.stop();
-    state = DISABLED;
+    auto_state = AUTOMED_DISABLED;
     digitalWrite(redpin, HIGH);
   }
   else {
@@ -170,41 +174,30 @@ void loop() {
       total_loops = integer_input;
       current_loops = 0;
       stepper.moveTo(Start);
-      state = INIT;
+      auto_state = INIT;
       Serial.println("Automed init");
     }
 
     if (command == "stop") {
       Serial.println("Stopping");
       stepper.stop();
-      state = DISABLED;
+      auto_state = AUTOMED_DISABLED;
     }
 
     if (command == "state") {
-      Serial.println(state);
+      Serial.print(buttons_state);
+      Serial.print(" ");
+      Serial.println(auto_state);
     }
   }
 
   //============ se ejecuta en cada loop
 
-  /*
-    test(rightButton);
-    test(leftButton);
-    test(homeButton);
-    test(stopButton);
-  */
-
-  /*
-    buttonStateDebounce(rightButton);
-    buttonStateDebounce(leftButton);
-    buttonStateDebounce(homeButton);
-    buttonStateDebounce(stopButton);
-  */
-
   rightButton.currentState = buttonStateDebounce(rightButton);
   leftButton.currentState = buttonStateDebounce(leftButton);
   homeButton.currentState = buttonStateDebounce(homeButton);
   stopButton.currentState = buttonStateDebounce(stopButton);
+
 
 
   buttonCommands();
@@ -213,12 +206,14 @@ void loop() {
 
   if (stepper.isRunning()) {
     digitalWrite(greenpin, HIGH);
+    if (buttons_state == BUTTONS_ENABLED) {
+      buttons_state = BUTTONS_DISABLED;
+    }
   }
-  else
-  {
+  else {
     digitalWrite(greenpin, LOW);
+    buttons_state = BUTTONS_ENABLED;
   }
-
 }
 
 //=========================
@@ -249,16 +244,16 @@ void rehome() {
 }
 
 void automed() {
-  switch (state) {
+  switch (auto_state) {
 
-    case DISABLED: //default
+    case AUTOMED_DISABLED:
       break;
 
     case INIT:
       if (stepper.distanceToGo() == 0) {
         Serial.println("Cambio a WAITING_START");
         startMillis = currentMillis;
-        state = WAITING_START;
+        auto_state = WAITING_START;
       }
       break;
 
@@ -267,7 +262,7 @@ void automed() {
         Serial.println("Cambio a TOEND");
         stepper.moveTo(Stop);
         stepper.setMaxSpeed(speed_ida);
-        state = TOEND;
+        auto_state = TOEND;
       }
       break;
 
@@ -275,7 +270,7 @@ void automed() {
       if (stepper.distanceToGo() == 0) {
         Serial.println("Cambio a WAITING_STOP");
         stopMillis = currentMillis;
-        state = WAITING_STOP;
+        auto_state = WAITING_STOP;
       }
       break;
 
@@ -284,20 +279,20 @@ void automed() {
         Serial.println("Cambio a TOSTART");
         stepper.moveTo(Start);
         stepper.setMaxSpeed(speed_vuelta);
-        state = TOSTART;
+        auto_state = TOSTART;
       }
       break;
 
-    case TOSTART: //si terminó suma una vuelta al contador. si dio todas las vueltas pasa a DISABLED, sino vuelve a empezar
+    case TOSTART:
       if (stepper.distanceToGo() == 0) {
         current_loops++;
         if (current_loops == total_loops) {
           Serial.println("Termine las vueltas, cambio a DISABLED");
-          state = DISABLED;
+          auto_state = AUTOMED_DISABLED;
         }
         else {
           Serial.println("Faltan vueltas, cambio a INIT");
-          state = INIT;
+          auto_state = INIT;
         }
       }
       break;
@@ -379,24 +374,29 @@ int buttonStateDebounce(pushButton button) {
 
 
 void buttonCommands() {
-  if (stopButton.toggled) {
+  if (!stopButton.currentState) {
     Serial.println("Stop button pressed");
     stepper.stop();
-    state = DISABLED;
+    auto_state = AUTOMED_DISABLED;
     //stopButton.toggled = 0;
   }
-  if (homeButton.toggled) {
+
+  if (!homeButton.currentState) {
     Serial.println("Home button pressed");
     rehome();
     //homeButton.toggled = 0;
   }
-  if (!rightButton.currentState) {
-    Serial.println("+1");
-    stepper.move(1);
-  }
-  if (!leftButton.currentState) {
-    Serial.println("-1");
-    stepper.move(-1);
+
+
+  if (buttons_state == BUTTONS_ENABLED) {
+    if (!rightButton.currentState) {
+      Serial.println("+1");
+      stepper.move(1);
+    }
+    if (!leftButton.currentState) {
+      Serial.println("-1");
+      stepper.move(-1);
+    }
   }
 }
 
