@@ -12,12 +12,8 @@
  * La ultima vez cambiaste bocha de cosas: pasaste todas las funciones con comand a un if else grande (es mejor)
  * y hiciste una clase para los botones
  * Ahora tenes que: 
- * Las variables de comando e inputs no necesitan ser globales! Van a ser locales y usadas solo si entra un comando
- * Entonces, las funciones llamadas por comandos no tienen que tener el "if .... do", sino que las vamos a llamar desde el if else
- * grande de serialCommands
  * Todo lo que sea compartido entre serial y botones deberia ser una función aparte que podemosllamar desde los dos
  * Algunas funciones van a necesitar inputs y otras outputs para que todo esto funcione
- * Quizas hayaq que agregar algun static
  */
 
 #include <AccelStepper.h> //librería para control de steppers
@@ -38,12 +34,11 @@ const byte homeSwitch = 2,
 AccelStepper stepper(1, dir, pulse); // 1 -> driver de 2 cables
 
 //Creamos los objetos de la clase PushButton
-unsigned long debounceDelay = 50;
 
-PushButton rightButton(6, false, debounceDelay);
-PushButton leftButton(7, false, debounceDelay);
-PushButton stopButton(8, true, debounceDelay);
-PushButton homeButton(9, true, debounceDelay);
+PushButton rightButton(6, false, 50);
+PushButton leftButton(7, false, 50);
+PushButton stopButton(8, true, 50);
+PushButton homeButton(9, true, 50);
 
 //=====================================
 // Variables para movimiento automático
@@ -58,36 +53,28 @@ states state = autoDisabled;
 
 long Start; //donde empieza el recorrido
 long Finish; //donde termina
-int current_loop; //vueltas que dio hasta ahora //podría ser static
 int total_loops; //las que tiene que dar
 int speed_ida;
 int speed_vuelta;
 long backlash; //el "juego" del motor al cambiar de dirección
 
-// Millis = tiempo en milisegundos desde que arranca el programa
-// Lo usamos para que el motor espere al final del recorrido antes de cambiar de dirección
-// Nota: unsigned long porque son valores grandes, siempre positivos y si hubiera overflow queremos que
-// se resetee a 0
-
-unsigned long startMillis; //tiempo al principío del recorrido
-unsigned long stopMillis; //tiempo al final
-
 //===========================
 // Variables para leer Serial
 //===========================
 
+// Si entraron datos por serial o no
+bool newData = false;
+
+//El mensaje que tiene que armar
+typedef struct {
+  String command;
+  int integer_input;
+  long long_input;
+} Message;
+
 const byte numChars = 32;
 char receivedChars[numChars];
 char tempChars[numChars];
-
-// Variables para guardar el comando
-char message[numChars] = {0};
-int integer_input = 0;
-long long_input = 0;
-String command;
-
-// Si entraron datos por serial o no
-bool newData = false;
 
 //=========================
 // Rutinas de interrupción
@@ -140,9 +127,9 @@ void loop() {
   readserial();
   if (newData == true) {
     strcpy(tempChars, receivedChars); //hacemos una copia temporal de lo que recibimos en tempChars para proteger los datos originales
-    parseData();
+    Message newMessage = parseData();
     newData = false;
-    serialCommands(command, integer_input, long_input);
+    serialCommands(newMessage);
   }
 
   //============ se ejecuta en cada loop
@@ -168,7 +155,6 @@ void loop() {
 //=========================
 
 void rehome() {
-  if ((command == "rehome")) {
     Serial.println("Homing");
     digitalWrite(greenPin, HIGH);
 
@@ -187,11 +173,15 @@ void rehome() {
     backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
     stepper.setCurrentPosition(0);
     digitalWrite(greenPin, LOW);
-  }
 }
 
 void automed() {
 
+  //se inicializan a 0 por default
+  static unsigned long startMillis;
+  static unsigned long stopMillis;
+  static int current_loop;
+  
   switch (state) {
 
     case autoDisabled:
@@ -202,11 +192,12 @@ void automed() {
         startMillis = millis();
         current_loop++;
         if (current_loop > total_loops) {
-          Serial.println("Termine las vueltas, cambio a DISABLED");
+          //Serial.println("Termine las vueltas, cambio a DISABLED");
           state = autoDisabled;
+          current_loop = 0;
         }
         else {
-          Serial.println("Faltan vueltas, cambio a WAITING AT START");
+          //Serial.println("Faltan vueltas, cambio a WAITING AT START");
           state = waitingAtStart;
         }
       }
@@ -214,7 +205,7 @@ void automed() {
 
     case waitingAtStart:
       if (millis() - startMillis > 1000) {
-        Serial.println("Cambio a TOEND");
+        //Serial.println("Cambio a TOEND");
         stepper.moveTo(Finish);
         stepper.setMaxSpeed(speed_ida);
         state = goingToFinish;
@@ -223,7 +214,7 @@ void automed() {
 
     case goingToFinish:
       if (stepper.distanceToGo() == 0) {
-        Serial.println("Cambio a WAITING_STOP");
+        //Serial.println("Cambio a WAITING_STOP");
         stopMillis = millis();
         state = waitingAtFinish;
       }
@@ -231,7 +222,7 @@ void automed() {
 
     case waitingAtFinish:
       if (millis() - stopMillis > 1000) {
-        Serial.println("Cambio a TOSTART");
+        //Serial.println("Cambio a TOSTART");
         stepper.moveTo(Start);
         stepper.setMaxSpeed(speed_vuelta);
         state = goingToStart;
@@ -245,62 +236,52 @@ void automed() {
 //====================================
 
 
-void serialCommands(String command, int integer_input, long long_input) {
-  if (command == "measure") {
+void serialCommands(Message message) {
+  if (message.command == "measure") {
     Serial.println(stepper.currentPosition());
   }
-  else if (command == "stop") {
+  else if (message.command == "stop") {
     Serial.println("Stopping");
     stepper.stop();
     state = autoDisabled;
   }
-  else if (command == "setpoint") {
+  else if (message.command == "setpoint") {
     Serial.print("Setpoint: ");
-    Serial.println(long_input);
-    stepper.moveTo(long_input);
+    Serial.println(message.long_input);
+    stepper.setMaxSpeed(message.integer_input);
+    stepper.moveTo(message.long_input);
   }
-  else if (command == "setspeed") {
-    Serial.print("Speed set: ");
-    Serial.println(integer_input);
-    stepper.setMaxSpeed(integer_input);
-  }
-  else if (command == "setaccel") {
+  else if (message.command == "setaccel") {
     Serial.print("Acccel set: ");
-    Serial.println(integer_input);
-    stepper.setAcceleration(integer_input);
+    Serial.println(message.integer_input);
+    stepper.setAcceleration(message.integer_input);
   }
-  else if (command == "setstart") {
+  else if (message.command == "vuelta") {
     Serial.print("Start set at: ");
     Serial.println(Start);
-    Start = long_input;
+    Start = message.long_input;
+    speed_vuelta = message.integer_input;
   }
-  else if (command == "setfinish") {
+  else if (message.command == "ida") {
     Serial.print("Finish set at: ");
     Serial.println(Finish);
-    Finish = long_input;
+    Finish = message.long_input;
+    speed_ida = message.integer_input;
   }
-  else if (command == "automed") {
+  else if (message.command == "automed") {
     Serial.println("Automed initialized");
-    total_loops = integer_input;
-    current_loop = 0;
+    total_loops = message.integer_input;
     stepper.moveTo(Start);
     state = goingToStart;
   }
-  else if (command == "state") {
+  else if (message.command == "state") {
     Serial.println(state);
   }
-  else if (command == "backlash") {
+  else if (message.command == "backlash") {
     Serial.println(backlash);
   }
-  else if (command == "speed_ida") {
-    speed_ida = integer_input;
-    Serial.print("Speed ida set at: ");
-    Serial.println(speed_ida);
-  }
-  else if (command == "speed_vuelta") {
-    speed_vuelta = integer_input;
-    Serial.print("Speed vuelta set at: ");
-    Serial.println(speed_vuelta);
+  else if (message.command = "rehome"){
+    rehome();
   }
   else {
     Serial.println("Invalid command");
@@ -315,22 +296,23 @@ void serialCommands(String command, int integer_input, long long_input) {
 
 void buttonCommands() {
   if (stopButton.isOn()) {
-    Serial.println("Stop button pressed");
+    //Serial.println("Stop button pressed");
     stepper.stop();
+    state = autoDisabled;
   }
 
   if (homeButton.isOn()) {
-    Serial.println("Home button pressed");
+    //Serial.println("Home button pressed");
     rehome();
   }
 
   if (rightButton.enabled && rightButton.isOn()) {
-    Serial.println("+1");
+    //Serial.println("+1");
     stepper.move(1);
   }
 
   if (leftButton.enabled && leftButton.isOn()) {
-    Serial.println("-1");
+    //Serial.println("-1");
     stepper.move(-1);
   }
 }
@@ -374,18 +356,21 @@ void readserial() {
 }
 
 
-void parseData() {      // split the data into its parts
+Message parseData() {      // split the data into its parts
+  Message newMessage;
+  char received[numChars] = {0};
 
   char * strtokIndx; // this is used by strtok() as an index
 
   strtokIndx = strtok(tempChars, ",");     // get the first part - the string
-  strcpy(message, strtokIndx); // copy it to message
-  command = String(message);
+  strcpy(received, strtokIndx); // copy it to message
+  newMessage.command = String(received);
 
   strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
-  integer_input = atoi(strtokIndx);     // convertimos a un int
+  newMessage.integer_input = atoi(strtokIndx);     // convertimos a un int
 
   strtokIndx = strtok(NULL, ",");
-  long_input = atol(strtokIndx);  //convertimos a un long
+  newMessage.long_input = atol(strtokIndx);  //convertimos a un long
 
+  return newMessage;
 }
