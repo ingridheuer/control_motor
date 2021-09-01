@@ -39,6 +39,7 @@ PushButton leftButton(7, false, 50);
 PushButton stopButton(8, true, 50);
 PushButton homeButton(9, true, 50);
 
+bool buttonsEnabled = true;
 //=====================================
 // Variables para movimiento automático
 //=====================================
