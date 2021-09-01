@@ -9,55 +9,58 @@
 
 
 /*
- * La ultima vez cambiaste bocha de cosas: pasaste todas las funciones con comand a un if else grande (es mejor)
- * y hiciste una clase para los botones
- * Ahora tenes que: 
- * Todo lo que sea compartido entre serial y botones deberia ser una función aparte que podemosllamar desde los dos
- * Algunas funciones van a necesitar inputs y otras outputs para que todo esto funcione
- */
+   La ultima vez cambiaste bocha de cosas: pasaste todas las funciones con comand a un if else grande (es mejor)
+   y hiciste una clase para los botones
+   Ahora tenes que:
+   Todo lo que sea compartido entre serial y botones deberia ser una función aparte que podemosllamar desde los dos
+   Algunas funciones van a necesitar inputs y otras outputs para que todo esto funcione
+*/
 
 #include <AccelStepper.h> //librería para control de steppers
 #include <PushButton.h> //mini lib que me arme para los botones
 
 //Configuración general
-
-//Nota: homeSwitch y endSwitch tienen que ser pines 2 y 3 si o si,
-//porque son los únicos disponibles para interrupciones
 const byte homeSwitch = 2,
            //endSwitch = 3,
-           dir = 4,
-           pulse = 5,
+           dirPin = 4,
+           pulsePin = 5,
+           rightPin = 6,
+           leftPin = 7,
+           stopPin = 8,
+           homePin = 9,
            greenPin = 10,
            redPin = 11;
 
-//Creamos el objeto stepper de la clase AccelStepper
-AccelStepper stepper(1, dir, pulse); // 1 -> driver de 2 cables
+const long debounceDelay = 50;
+bool buttonsEnabled = true;
+bool &enabledRef = buttonsEnabled; //el estado los dos botones (<- , ->) refiere a la misma variable
 
-//Creamos los objetos de la clase PushButton
+AccelStepper stepper(1, dirPin, pulsePin); // 1 -> driver de 2 cables
 
-PushButton rightButton(6, false, 50);
-PushButton leftButton(7, false, 50);
-PushButton stopButton(8, true, 50);
-PushButton homeButton(9, true, 50);
+PushButton rightButton(rightPin, false, debounceDelay);
+PushButton leftButton(leftPin, false, debounceDelay);
+PushButton stopButton(stopPin, true, debounceDelay);
+PushButton homeButton(homePin, true, debounceDelay);
 
 //=====================================
 // Variables para movimiento automático
 //=====================================
 
-//Definimos los estados que puede tomar el programa cuando está en modo automático
+//Estados que puede tomar el programa cuando está en modo automático
 enum states
 {
   autoDisabled, goingToStart, waitingAtStart, goingToFinish, waitingAtFinish
 };
 states state = autoDisabled;
 
-long Start; //donde empieza el recorrido
-long Finish; //donde termina
-int total_loops; //las que tiene que dar
+long Start;
+long Finish;
+int total_loops;
 int speed_ida;
 int speed_vuelta;
-long backlash; //el "juego" del motor al cambiar de dirección
+long backlash;
 
+const long wait = 1000;
 //===========================
 // Variables para leer Serial
 //===========================
@@ -84,6 +87,7 @@ void ISRhome() {
   if (!digitalRead(homeSwitch)) {
     stepper.stop();
     state = autoDisabled;
+    buttonsEnabled = false;
     digitalWrite(redPin, HIGH);
   }
   else {
@@ -96,6 +100,7 @@ void ISRhome() {
   if (!digitalRead(endSwitch)) {
     stepper.stop();
     state = autoDisabled;
+    buttonsEnabled = false;
     digitalWrite(redPin, HIGH);
   }
   else {
@@ -108,7 +113,7 @@ void ISRhome() {
 void setup() {
   Serial.begin(9600);
 
-  stepper.setMaxSpeed(500);
+  stepper.setMaxSpeed(100);
   stepper.setAcceleration(200);
 
   pinMode(homeSwitch, INPUT_PULLUP);
@@ -118,35 +123,37 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(homeSwitch), ISRhome, CHANGE);
   //attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
+
+  rightButton.enabled = enabledRef;
+  leftButton.enabled = enabledRef;
 }
 
 
 void loop() {
 
-  //===== se ejecutan solo si le hablamos por serial
   readserial();
+  //===== se ejecutan solo si le hablamos por serial
   if (newData == true) {
-    strcpy(tempChars, receivedChars); //hacemos una copia temporal de lo que recibimos en tempChars para proteger los datos originales
+    strcpy(tempChars, receivedChars);
     Message newMessage = parseData();
     newData = false;
     serialCommands(newMessage);
   }
 
-  //============ se ejecuta en cada loop
-
+  //============ se ejecutan en cada loop
   buttonCommands();
   automed();
   stepper.run();
 
   if (stepper.isRunning()) {
     digitalWrite(greenPin, HIGH);
-    rightButton.enabled = false;
-    leftButton.enabled = false;
   }
   else {
     digitalWrite(greenPin, LOW);
-    rightButton.enabled = true;
-    leftButton.enabled = true;
+    if (!buttonsEnabled && (state == autoDisabled)){
+      //Si los deshabilité y terminó de moverse, los vuelvo a prender
+      buttonsEnabled = true;
+    }
   }
 }
 
@@ -155,24 +162,26 @@ void loop() {
 //=========================
 
 void rehome() {
-    Serial.println("Homing");
-    digitalWrite(greenPin, HIGH);
+  Serial.println("Homing");
+  digitalWrite(greenPin, HIGH);
+  buttonsEnabled = false;
 
-    while (digitalRead(homeSwitch)) {
-      stepper.move(-1);
-      stepper.run();
-    }
+  while (digitalRead(homeSwitch)) {
+    stepper.move(-1);
+    stepper.run();
+  }
 
-    stepper.setCurrentPosition(0); //para medir el backlash
+  stepper.setCurrentPosition(0); //para medir el backlash
 
-    while (!digitalRead(homeSwitch)) {
-      stepper.move(1);
-      stepper.run();
-    }
+  while (!digitalRead(homeSwitch)) {
+    stepper.move(1);
+    stepper.run();
+  }
 
-    backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
-    stepper.setCurrentPosition(0);
-    digitalWrite(greenPin, LOW);
+  backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
+  stepper.setCurrentPosition(0);
+  digitalWrite(greenPin, LOW);
+  buttonsEnabled = true;
 }
 
 void automed() {
@@ -181,7 +190,7 @@ void automed() {
   static unsigned long startMillis;
   static unsigned long stopMillis;
   static int current_loop;
-  
+
   switch (state) {
 
     case autoDisabled:
@@ -204,7 +213,7 @@ void automed() {
       break;
 
     case waitingAtStart:
-      if (millis() - startMillis > 1000) {
+      if (millis() - startMillis > wait) {
         //Serial.println("Cambio a TOEND");
         stepper.moveTo(Finish);
         stepper.setMaxSpeed(speed_ida);
@@ -221,7 +230,7 @@ void automed() {
       break;
 
     case waitingAtFinish:
-      if (millis() - stopMillis > 1000) {
+      if (millis() - stopMillis > wait) {
         //Serial.println("Cambio a TOSTART");
         stepper.moveTo(Start);
         stepper.setMaxSpeed(speed_vuelta);
@@ -244,6 +253,7 @@ void serialCommands(Message message) {
     Serial.println("Stopping");
     stepper.stop();
     state = autoDisabled;
+    buttonsEnabled = false;
   }
   else if (message.command == "setpoint") {
     Serial.print("Setpoint: ");
@@ -272,6 +282,7 @@ void serialCommands(Message message) {
     Serial.println("Automed initialized");
     total_loops = message.integer_input;
     stepper.moveTo(Start);
+    buttonsEnabled = false;
     state = goingToStart;
   }
   else if (message.command == "state") {
@@ -280,7 +291,7 @@ void serialCommands(Message message) {
   else if (message.command == "backlash") {
     Serial.println(backlash);
   }
-  else if (message.command = "rehome"){
+  else if (message.command = "rehome") {
     rehome();
   }
   else {
@@ -299,21 +310,19 @@ void buttonCommands() {
     //Serial.println("Stop button pressed");
     stepper.stop();
     state = autoDisabled;
+    buttonsEnabled = false;
   }
-
-  if (homeButton.isOn()) {
-    //Serial.println("Home button pressed");
-    rehome();
-  }
-
-  if (rightButton.enabled && rightButton.isOn()) {
+  else if (rightButton.enabled && rightButton.isOn()) {
     //Serial.println("+1");
     stepper.move(1);
   }
-
-  if (leftButton.enabled && leftButton.isOn()) {
+  else if (leftButton.enabled && leftButton.isOn()) {
     //Serial.println("-1");
     stepper.move(-1);
+  }
+  else if (homeButton.isOn()) {
+    //Serial.println("Home button pressed");
+    rehome();
   }
 }
 
