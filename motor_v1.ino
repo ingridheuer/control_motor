@@ -33,7 +33,6 @@ const byte homeSwitch = 2,
 
 const long debounceDelay = 50;
 bool buttonsEnabled = true;
-bool &enabledRef = buttonsEnabled; //el estado los dos botones (<- , ->) refiere a la misma variable
 
 AccelStepper stepper(1, dirPin, pulsePin); // 1 -> driver de 2 cables
 
@@ -123,9 +122,6 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(homeSwitch), ISRhome, CHANGE);
   //attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
-
-  rightButton.enabled = enabledRef;
-  leftButton.enabled = enabledRef;
 }
 
 
@@ -150,7 +146,7 @@ void loop() {
   }
   else {
     digitalWrite(greenPin, LOW);
-    if (!buttonsEnabled && (state == autoDisabled)){
+    if ((state == autoDisabled) && !buttonsEnabled){
       //Si los deshabilité y terminó de moverse, los vuelvo a prender
       buttonsEnabled = true;
     }
@@ -162,9 +158,7 @@ void loop() {
 //=========================
 
 void rehome() {
-  Serial.println("Homing");
   digitalWrite(greenPin, HIGH);
-  buttonsEnabled = false;
 
   while (digitalRead(homeSwitch)) {
     stepper.move(-1);
@@ -181,7 +175,6 @@ void rehome() {
   backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
   stepper.setCurrentPosition(0);
   digitalWrite(greenPin, LOW);
-  buttonsEnabled = true;
 }
 
 void automed() {
@@ -201,12 +194,12 @@ void automed() {
         startMillis = millis();
         current_loop++;
         if (current_loop > total_loops) {
-          //Serial.println("Termine las vueltas, cambio a DISABLED");
+          Serial.println("Termine las vueltas, cambio a DISABLED");
           state = autoDisabled;
           current_loop = 0;
         }
         else {
-          //Serial.println("Faltan vueltas, cambio a WAITING AT START");
+          Serial.println("Faltan vueltas, cambio a WAITING AT START");
           state = waitingAtStart;
         }
       }
@@ -214,7 +207,7 @@ void automed() {
 
     case waitingAtStart:
       if (millis() - startMillis > wait) {
-        //Serial.println("Cambio a TOEND");
+        Serial.println("Cambio a TOEND");
         stepper.moveTo(Finish);
         stepper.setMaxSpeed(speed_ida);
         state = goingToFinish;
@@ -223,7 +216,7 @@ void automed() {
 
     case goingToFinish:
       if (stepper.distanceToGo() == 0) {
-        //Serial.println("Cambio a WAITING_STOP");
+        Serial.println("Cambio a WAITING_STOP");
         stopMillis = millis();
         state = waitingAtFinish;
       }
@@ -231,7 +224,7 @@ void automed() {
 
     case waitingAtFinish:
       if (millis() - stopMillis > wait) {
-        //Serial.println("Cambio a TOSTART");
+        Serial.println("Cambio a TOSTART");
         stepper.moveTo(Start);
         stepper.setMaxSpeed(speed_vuelta);
         state = goingToStart;
@@ -258,6 +251,9 @@ void serialCommands(Message message) {
   else if (message.command == "setpoint") {
     Serial.print("Setpoint: ");
     Serial.println(message.long_input);
+    buttonsEnabled = false;
+    rightButton.enabled = false;
+    leftButton.enabled = false;
     stepper.setMaxSpeed(message.integer_input);
     stepper.moveTo(message.long_input);
   }
@@ -285,13 +281,22 @@ void serialCommands(Message message) {
     buttonsEnabled = false;
     state = goingToStart;
   }
-  else if (message.command == "state") {
-    Serial.println(state);
+  else if (message.command == "info") {
+    Serial.print("auto state: ");
+    Serial.print(state);
+    Serial.print(" ");
+    Serial.print("buttons state: ");
+    Serial.println(buttonsEnabled);
+    Serial.print("left button: ");
+    Serial.println(leftButton.enabled);
+    Serial.print("right button: ");
+    Serial.println(rightButton.enabled);
   }
   else if (message.command == "backlash") {
     Serial.println(backlash);
   }
   else if (message.command = "rehome") {
+    Serial.println("homing");
     rehome();
   }
   else {
@@ -307,21 +312,21 @@ void serialCommands(Message message) {
 
 void buttonCommands() {
   if (stopButton.isOn()) {
-    //Serial.println("Stop button pressed");
+    Serial.println("Stop button pressed");
     stepper.stop();
     state = autoDisabled;
     buttonsEnabled = false;
   }
-  else if (rightButton.enabled && rightButton.isOn()) {
-    //Serial.println("+1");
+  else if (buttonsEnabled && rightButton.isOn()) {
+    Serial.println("+1");
     stepper.move(1);
   }
-  else if (leftButton.enabled && leftButton.isOn()) {
-    //Serial.println("-1");
+  else if (buttonsEnabled && leftButton.isOn()) {
+    Serial.println("-1");
     stepper.move(-1);
   }
   else if (homeButton.isOn()) {
-    //Serial.println("Home button pressed");
+    Serial.println("Home button pressed");
     rehome();
   }
 }
