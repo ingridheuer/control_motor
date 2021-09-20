@@ -1,0 +1,13 @@
+Comando		código
+Stop		STP
+Measure		MES
+Setpoint	SET
+Vuelta		VUE
+Ida		IDA
+Aceleración	ACC
+Automático	AUT
+Info		INF
+Backlash	BCK
+Home		HOM
+
+Comando inválido	NAK
