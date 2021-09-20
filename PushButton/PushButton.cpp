@@ -12,7 +12,6 @@ PushButton::PushButton(byte pin, bool singlePush, unsigned long debounceDelay)
   _pin = pin;
   _debounceDelay = debounceDelay;
   _singlePush = singlePush;
-  _state = HIGH;
 }
 
 void PushButton::readAndDebounce() {
