@@ -12,7 +12,7 @@
 
 //Configuración general
 const byte homeSwitch = 2,
-           //endSwitch = 3,
+           endSwitch = 3,
            dirPin = 4,
            pulsePin = 5,
            rightPin = 6,
@@ -26,7 +26,7 @@ const long debounceDelay = 50;
 bool buttonsEnabled = true;
 long baudRate = 115200;
 
-AccelStepper stepper(1, dirPin, pulsePin); // 1 -> driver de 2 cables
+AccelStepper stepper(1, pulsePin, dirPin); // 1 -> driver de 2 cables
 
 PushButton rightButton(rightPin, false, debounceDelay);
 PushButton leftButton(leftPin, false, debounceDelay);
@@ -90,8 +90,8 @@ void ISRhome() {
   }
 }
 
-/*
-  void ISRend() {
+
+void ISRend() {
   if (!digitalRead(endSwitch)) {
     stepper.stop();
     state = autoDisabled;
@@ -101,23 +101,26 @@ void ISRhome() {
   else {
     digitalWrite(redPin, LOW);
   }
-  }
-*/
+}
+
 //======================
 
 void setup() {
   Serial.begin(baudRate);
 
-  stepper.setMaxSpeed(100);
+  stepper.setMaxSpeed(200);
   stepper.setAcceleration(200);
 
   pinMode(homeSwitch, INPUT_PULLUP);
-  //pinMode(endSwitch, INPUT_PULLUP);
+  pinMode(endSwitch, INPUT_PULLUP);
   pinMode(greenPin, OUTPUT);
   pinMode(redPin, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(homeSwitch), ISRhome, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
+
+  blinkLeds(3, 300);
+  
 }
 
 
@@ -157,14 +160,14 @@ void rehome() {
   digitalWrite(greenPin, HIGH);
 
   while (digitalRead(homeSwitch)) {
-    stepper.move(-1);
+    stepper.move(-30);
     stepper.run();
   }
 
   stepper.setCurrentPosition(0); //para medir el backlash
 
   while (!digitalRead(homeSwitch)) {
-    stepper.move(1);
+    stepper.move(30);
     stepper.run();
   }
 
@@ -203,6 +206,10 @@ void automed() {
 
     case waitingStart:
       if (millis() - startMillis > wait) {
+        //Serial.println("Cambiando direccion");
+        stepper.runToNewPosition(recorrido.start + backlash);
+        stepper.setCurrentPosition(recorrido.start);
+
         //Serial.println("Cambio a going to finish");
         stepper.moveTo(recorrido.finish);
         stepper.setMaxSpeed(recorrido.speed_ida);
@@ -220,6 +227,10 @@ void automed() {
 
     case waitingFinish:
       if (millis() - stopMillis > wait) {
+        //Serial.println("Cambiando direccion");
+        stepper.runToNewPosition(recorrido.finish - backlash);
+        stepper.setCurrentPosition(recorrido.finish);
+
         //Serial.println("Cambio a going to stsart");
         stepper.moveTo(recorrido.start);
         stepper.setMaxSpeed(recorrido.speed_vuelta);
@@ -273,19 +284,19 @@ void serialCommands(Message message) {
   else if (message.command == "BCK") {
     Serial.println(backlash);
   }
-  else if (message.command = "HOM") {
+  else if (message.command == "HOM") {
     Serial.println("HOM");
     rehome();
   }
-  else if (message.command == "INF") {
-    Serial.print("Auto State: ");
-    Serial.println(state);
-    Serial.print("Buttons State: ");
-    Serial.println(buttonsEnabled);
-    Serial.print("BAUD rate: ");
-    Serial.println(baudRate);
+  else if (message.command == "SCP"){
+    Serial.println("SCP");
+    stepper.setCurrentPosition(message.integer_input);
   }
-  else if (message.command == "IDN"){
+  else if (message.command == "INF") {
+    String info = getInfo();
+    Serial.println(info);
+  }
+  else if (message.command == "IDN") {
     Serial.println("Ingrid Heuer, Agosto 2021");
   }
   else {
@@ -308,11 +319,11 @@ void buttonCommands() {
   }
   else if (buttonsEnabled && rightButton.isOn()) {
     //Serial.println("+1");
-    stepper.move(1);
+    stepper.move(100);
   }
   else if (buttonsEnabled && leftButton.isOn()) {
     //Serial.println("-1");
-    stepper.move(-1);
+    stepper.move(-100);
   }
   else if (homeButton.isOn()) {
     //Serial.println("Home button pressed");
@@ -359,21 +370,58 @@ void readserial() {
 }
 
 
-Message parseData() {      // split the data into its parts
+Message parseData() {      // Separar los datos y armar el mensaje
   Message newMessage;
   char received[numChars] = {0};
 
-  char * strtokIndx; // this is used by strtok() as an index
+  char * strtokIndx; //lo usa strtok() como índice
 
-  strtokIndx = strtok(tempChars, ",");     // get the first part - the string
-  strcpy(received, strtokIndx); // copy it to message
-  newMessage.command = String(received);
+  strtokIndx = strtok(tempChars, ",");     // toma hasta la primer parte, el string
+  strcpy(received, strtokIndx); // y lo copia en received
+  newMessage.command = String(received); //lo asignamos al miembro command del mensaje
 
-  strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
-  newMessage.integer_input = atoi(strtokIndx);     // convertimos a un int
+  strtokIndx = strtok(NULL, ","); // idem pero con el int
+  newMessage.integer_input = atoi(strtokIndx);
 
   strtokIndx = strtok(NULL, ",");
-  newMessage.long_input = atol(strtokIndx);  //convertimos a un long
+  newMessage.long_input = atol(strtokIndx);  //idem pero con el long
 
   return newMessage;
+}
+
+String getInfo() {
+  const String string1 = "Auto State: ",
+               string2 = "Buttons State ",
+               string3 = "BAUD rate: ",
+               string4 = "Recorrido: ",
+               string5 = "Start, Finish: ",
+               string6 = "Vel. ida, Vel. vuelta: ",
+               espacio = " ",
+               endl = "\n";
+
+  String info = string1 + state + endl
+                + string2 + buttonsEnabled + endl
+                + string3 + baudRate + endl
+                + string4 + endl
+                + string5 + recorrido.start + espacio + recorrido.finish + endl
+                + string6 + recorrido.speed_ida + espacio + recorrido.speed_vuelta + endl;
+  return info;
+}
+
+void blinkLeds(const int num_blinks, const long interval) {
+  long time_ = millis();
+  int blinks = 0;
+  while (blinks < num_blinks) {
+    while ((millis() - time_) < interval) {
+      digitalWrite(redPin, HIGH);
+      digitalWrite(greenPin, HIGH);
+    }
+    time_ = millis();
+    while ((millis() - time_) < interval) {
+      digitalWrite(redPin, LOW);
+      digitalWrite(greenPin, LOW);
+    }
+    time_ = millis();
+    blinks++;
+  }
 }
