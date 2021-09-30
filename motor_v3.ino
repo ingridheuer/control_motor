@@ -1,4 +1,3 @@
-
 /* Automatización de motor V1
    Ingrid Heuer
    Julio 2021
@@ -24,7 +23,7 @@ const byte homeSwitch = 2,
 
 const long debounceDelay = 50;
 volatile bool buttonsEnabled = true;
-long baudRate = 9600;
+long baudRate = 115200;
 bool Print = false;
 
 AccelStepper stepper(1, pulsePin, dirPin); // 1 -> driver de 2 cables
@@ -62,7 +61,7 @@ long backlash = 0;
 const long wait = 1000;
 
 const bool CW = true;
-const bool CCW = false; //CW = clockwise, CCW = counterclockwise ---> recordar que CW es true y CCW es false, also, positivo = CW, negativo = CCW
+const bool CCW = false; //CW = clockwise, CCW = counterclockwise ---> recordar que CW es true y CCW es false, also, positivo = CCW, negativo = CW
 
 bool direc = CCW; //xq home empieza CCW
 bool directionHasChanged = false; //empieza false asi no corrige porque si
@@ -119,16 +118,16 @@ void ISRend() {
 void setup() {
   Serial.begin(baudRate);
 
-  stepper.setMaxSpeed(200);
-  stepper.setAcceleration(200);
+  stepper.setMaxSpeed(400);  //Con la reduccion de 1:60 y el microswitch de 400 esto es 1 RPM en la plataforma
+  stepper.setAcceleration(200);  //Esto hay que calibrar y elegirlo
 
   pinMode(homeSwitch, INPUT_PULLUP);
-  //pinMode(endSwitch, INPUT_PULLUP);
+  pinMode(endSwitch, INPUT_PULLUP);
   pinMode(greenPin, OUTPUT);
   pinMode(redPin, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(homeSwitch), ISRhome, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
 
   blinkLeds(3, 300);
 
@@ -177,22 +176,25 @@ void loop() {
 
 void gohome() {
   digitalWrite(greenPin, HIGH);
+  Serial.println("Start homing");
 
   while (digitalRead(homeSwitch)) {
-    stepper.move(-30);
+    stepper.move(-60);
     stepper.run();
   }
 
+  Serial.println("Step back");
   stepper.setCurrentPosition(0); //para medir el backlash
 
   while (!digitalRead(homeSwitch)) {
-    stepper.move(30);
+    stepper.move(60);
     stepper.run();
   }
 
+  Serial.println("Done");
   backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
   stepper.setCurrentPosition(0);
-  direc = CW;                           //xq home termina yendo CW
+  //direc = CCW; //xq home termina yendo CW
   digitalWrite(greenPin, LOW);
 }
 
@@ -213,12 +215,12 @@ void automed() {
         startMillis = millis();
         current_loop++;
         if (current_loop > recorrido.total_loops) {
-          //Serial.println("Termine las vueltas, cambio a disabled y reseteo loops");
+          Serial.println("Termine las vueltas, cambio a disabled y reseteo loops");
           state = autoDisabled;
           current_loop = 0;
         }
         else {
-          //Serial.println("Cambio a waiting start");
+          Serial.println("Cambio a waiting start");
           state = waitingStart;
         }
       }
@@ -226,7 +228,7 @@ void automed() {
 
     case waitingStart:
       if (millis() - startMillis > wait) {
-        //Serial.println("Cambiando direccion");
+        Serial.println("Cambiando direccion");
         //stepper.runToNewPosition(recorrido.start + backlash);
         //stepper.setCurrentPosition(recorrido.start);
 
@@ -240,7 +242,7 @@ void automed() {
 
     case goingToFinish:
       if (stepper.distanceToGo() == 0) {
-        //Serial.println("Cambio a waiting finish");
+        Serial.println("Cambio a waiting finish");
         stopMillis = millis();
         state = waitingFinish;
       }
@@ -248,7 +250,7 @@ void automed() {
 
     case waitingFinish:
       if (millis() - stopMillis > wait) {
-        //Serial.println("Cambiando direccion");
+        Serial.println("Cambiando direccion");
         //stepper.runToNewPosition(recorrido.finish - backlash);
         //stepper.setCurrentPosition(recorrido.finish);
 
@@ -330,7 +332,18 @@ void serialCommands(Message message) {
     Print = false;
   }
   else if (message.command == "DIR") {
-    Serial.println(getDirection());
+    Serial.println(direc);
+  }
+  else if (message.command == "BLK"){
+    Serial.println("BLK");
+    stepper.setMaxSpeed(message.integer_input);
+    stepper.move(message.long_input);
+    direc = getDirection();
+    stepper.runToPosition();
+  }
+  else if (message.command == "SBK"){
+    backlash = message.long_input;
+    Serial.println("SBK");
   }
   else {
     Serial.println("NAK");
@@ -352,13 +365,13 @@ void buttonCommands() {
   }
   else if (buttonsEnabled && rightButton.isOn()) {
     //Serial.println("+1");
-    stepper.move(100);
-    direc = CW;
+    stepper.move(60);
+    direc = CCW;
   }
   else if (buttonsEnabled && leftButton.isOn()) {
     //Serial.println("-1");
-    stepper.move(-100);
-    direc = CCW;
+    stepper.move(-60);
+    direc = CW;
   }
   else if (homeButton.isOn()) {
     //Serial.println("Home button pressed");
@@ -461,14 +474,16 @@ void blinkLeds(const int num_blinks, const long interval) {
   }
 }
 
+
 bool getDirection() {
   return (stepper.distanceToGo() > 0); //true-> CW, false-> CCW //Si frenó es 0, que es CCW ----> lo use solo en casos donde no estaria frenado
 }
 
 void updateDirection() {
-  static bool old_direc;  //se inicializa a 0 q es igual a CCW
+  static bool old_direc;  //se inicializa a 0 q es igual a CcW
 
   if (direc != old_direc) {
+    Serial.println("Direction has changed!");
     directionHasChanged = true;
     old_direc = direc;
   }
@@ -479,6 +494,7 @@ void updateDirection() {
 
 void adjustBacklash() {
   if (directionHasChanged) {
+    Serial.println("Adjusting backlash");
     long target = stepper.targetPosition();
     long current = stepper.currentPosition();
     if (direc == CW) {
@@ -490,5 +506,6 @@ void adjustBacklash() {
     stepper.runToPosition();
     stepper.setCurrentPosition(current);
     stepper.moveTo(target);
+    Serial.println("Done");
   }
 }
