@@ -8,8 +8,8 @@ Queríamos darle bastante flexibildiad al código para que más adelante se pued
 Por seguridad agregamos interrupciones con microswitches de fin de recorrido, que también usamos para homing y calibración.
 
 ## Algunas funciones:
-* Homing automático con microswitch
-* Interrupciones de seguridad con microswitches
+* Homing automático
+* Interrupciones de seguridad con microswitches de fin de recorrido
 * Movimiento preseteado automático: se puede elegir principio y fin, velocidad de ida y vuelta y cantidad de repeticiones.
 * Mini lib para manejar funciones de pulsadores y switches, con debounce (filtrado de ruidos).
 * Corrección automática de backlash (juego de la reducción) en cambio de dirección
