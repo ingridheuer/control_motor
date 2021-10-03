@@ -13,8 +13,7 @@ Por seguridad agregamos interrupciones con microswitches de fin de recorrido, qu
 * Movimiento preseteado automático: se puede elegir principio y fin, velocidad de ida y vuelta y cantidad de repeticiones.
 * Mini lib para manejar funciones de pulsadores y switches, con debounce (filtrado de ruidos).
 * Corrección automática de backlash (juego de la reducción) en cambio de dirección
-* Programa de LabVIEW para controlar con interfaz gráfica
-* Interfaz de LabVIEW para mediciones
+* Programa de LabVIEW para controlar con interfaz gráfica y realizar mediciones 
 * Protocolo de comunicación por serial con LabVIEW
 
 Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/).
