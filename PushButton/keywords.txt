@@ -1,5 +1,5 @@
 PushButton	KEYWORD1
 readAndDebounce	KEYWORD2
 readAndDebounce_singlePush	KEYWORD2
-isOn	KEYWORD2
-setPin KEYWORD2
+isOn  KEYWORD2
+setPin  KEYWORD2
