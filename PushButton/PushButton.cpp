@@ -8,10 +8,15 @@
 
 PushButton::PushButton(byte pin, bool singlePush, unsigned long debounceDelay)
 {
-  pinMode(pin, INPUT_PULLUP);
   _pin = pin;
   _debounceDelay = debounceDelay;
   _singlePush = singlePush;
+  _state = HIGH;
+}
+
+void PushButton::setPin()
+{
+  pinMode(_pin, INPUT_PULLUP);
 }
 
 void PushButton::readAndDebounce() {
