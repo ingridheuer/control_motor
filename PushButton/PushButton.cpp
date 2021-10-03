@@ -6,11 +6,11 @@
 #include "Arduino.h"
 #include "PushButton.h"
 
-PushButton::PushButton(byte pin, bool singlePush, unsigned long debounceDelay)
+PushButton::PushButton(byte pin, bool stateChange, unsigned long debounceDelay)
 {
   _pin = pin;
   _debounceDelay = debounceDelay;
-  _singlePush = singlePush;
+  _stateChange = stateChange;
   _state = HIGH;
 }
 
@@ -34,7 +34,7 @@ void PushButton::readAndDebounce() {
   _previousState = reading;
 }
 
-void PushButton::readAndDebounce_singlePush() {
+void PushButton::readAndDebounce_stateChange() {
 
   byte reading = digitalRead(_pin);
 
@@ -58,8 +58,8 @@ void PushButton::readAndDebounce_singlePush() {
 
 bool PushButton::isOn() {
 
-  if (_singlePush) {
-    readAndDebounce_singlePush();
+  if (_stateChange) {
+    readAndDebounce_stateChange();
     return _toggled;
   }
   else {

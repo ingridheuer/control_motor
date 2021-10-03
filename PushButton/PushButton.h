@@ -11,10 +11,10 @@
 class PushButton
 {
   public:
-    PushButton(byte pin, bool singlePush, unsigned long debounceDelay);
+    PushButton(byte pin, bool stateChange, unsigned long debounceDelay);
     void setPin();
     void readAndDebounce();
-    void readAndDebounce_singlePush();
+    void readAndDebounce_stateChange();
     bool isOn();
 
   private:
@@ -23,7 +23,7 @@ class PushButton
     byte _previousState;
     unsigned long _lastDebounceTime = 0;
     unsigned long _debounceDelay;
-    bool _singlePush;
+    bool _stateChange;
     bool _toggled = false;
 };
 
