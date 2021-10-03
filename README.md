@@ -1,20 +1,22 @@
-# Control de motor stepper con Arduino
+# Control y automatización de electroimán rotante con motor paso a paso (Proyecto de laboratorio 6 y 7)
 
-Control de motor paso a paso con comandos por serial e interfaz con LabVIEW. Proyecto de laboratorio 6 y 7.
-Diseñado para automatizar mediciones con un electroimán rotante, en el laboratorio de bajas temperaturas del DF, FCEN (UBA).
+Diseñado para automatizar mediciones angulares en experimentos de superconductividad, en el laboratorio de bajas temperaturas del DF, FCEN (UBA).
+El programa controla un motor paso a paso que se usa para girar la plataforma que sostiene al electroimán. La idea es poder automatizar el movimiento de la plataforma para poder realizar más mediciones sin tener que rotar el equipo manualmente.
+
+Queríamos darle bastante flexibildiad al código para que más adelante se puedan agregar comandos y funciones nuevas, así que usamos un "protocolo" sencillo para usar comandos desde el monitor serial del IDE. Armamos también un programa en LabVIEW que se comunica con el Arduino usando el mismo protocolo, para tener una interfaz gráfica desde la PC. Para que el sistema pueda ser independiente de la PC, también agregamos controles con pulsadores.
+
+Por seguridad agregamos interrupciones con microswitches de fin de recorrido, que también usamos para homing y calibración.
 
 ## Algunas funciones:
 * Homing automático con microswitch
 * Interrupciones de seguridad con microswitches
 * Movimiento preseteado automático
 * Mini lib para manejar funciones de pulsadores y switches, con debounce (filtrado de ruidos).
-* Corrección automática de backlash en cambio de dirección
+* Corrección automática de backlash (juego de la reducción) en cambio de dirección
 * Programa de LabVIEW para controlar con interfaz gráfica
 * Interfaz de LabVIEW para mediciones
 * Protocolo de comunicación por serial con LabVIEW
-
-Programamos todo el control del motor en Arduino, LabVIEW funciona solo como interfaz gráfica para envíar comandos y recibir información. 
-El programa funciona independientemente de LabVIEW y los comandos se pueden envíar por serial monitor del IDE.
+* 
 
 Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/).
 
