@@ -6,10 +6,12 @@
    Automatización y control del electroimán del laboratorio de bajas temperaturas
 */
 
+//Incluyo librerías y archivos de clases
 #include <AccelStepper.h> //librería para control de steppers
-#include <PushButton.h> //mini lib que me arme para los botones
+#include <digitalPinFast.h> //librería para mejorar la velocidad de pines digitales
+#include <PushButton.h> //clase que arme controlar los botones (ver código en Arduino/libraries/PushButton)
 
-//Configuración general
+//Defino los pines como constantes
 const byte homeSwitch = 2,
            endSwitch = 3,
            dirPin = 4,
@@ -21,19 +23,33 @@ const byte homeSwitch = 2,
            greenPin = 10,
            redPin = 11;
 
+//Creo objetos: motor, botones y leds
+AccelStepper stepper(1, pulsePin, dirPin); // 1 = driver
+
+//Elegí un delay de 50ms para todos los botones/switches, pero se pueden configurar por separado si hace falta
 const long debounceDelay = 50;
-volatile bool buttonsEnabled = true;
-long baudRate = 115200;
-bool Print = false;
-
-AccelStepper stepper(1, pulsePin, dirPin); // 1 -> driver de 2 cables
-
 PushButton rightButton(rightPin, false, debounceDelay);
 PushButton leftButton(leftPin, false, debounceDelay);
 PushButton stopButton(stopPin, true, debounceDelay);
 PushButton homeButton(homePin, true, debounceDelay);
 PushButton homeMicroswitch(homeSwitch, false, debounceDelay);
+PushButton endMicroswitch(endSwitch, false, debounceDelay);
 
+digitalPinFast greenLed(greenPin);
+digitalPinFast redLed(redPin);
+
+//==========================================================
+// Variables globales (son accesibles para todo el programa)
+//==========================================================
+volatile bool buttonsEnabled = true;  //volatile porque los interrupts la pueden modificar
+long baudRate = 115200;
+
+unsigned long startTime;
+unsigned long endTime;
+unsigned long execTime;
+bool Print = false;
+bool Print2 = false;
+bool homing = false;
 //=====================================
 // Variables para movimiento automático
 //=====================================
@@ -43,7 +59,7 @@ enum states
 {
   autoDisabled, goingToStart, waitingStart, goingToFinish, waitingFinish
 };
-volatile states state = autoDisabled;
+volatile states state = autoDisabled;   //volatile porque los interrupts la pueden modificar
 
 typedef struct {
   long start;
@@ -54,18 +70,18 @@ typedef struct {
 } Recorrido;
 
 Recorrido recorrido;
-
-//==========================
-//Calibración y backlash
-//==========================
-long backlash = 0;
 const long wait = 1000;
-bool directionHasChanged = false; //empieza false asi no corrige porque si
+
+//=====================================
+//Variables para calibración y backlash
+//=====================================
+long backlash = 0;
+
+bool directionHasChanged = false;
 bool skipNext = false;
 
 enum direccion {IZQ, DER, DET};
 direccion direc = DER;
-
 
 //===========================
 // Variables para leer Serial
@@ -91,13 +107,13 @@ char tempChars[numChars];
 
 void ISRhome() {
   if (!digitalRead(homeSwitch)) {
-    stepper.stop();
-    state = autoDisabled;
-    buttonsEnabled = false;
-    digitalWrite(redPin, HIGH);
+    if (!homing && !waitingStart) {
+      stepper.stop();
+    }
+    redLed.digitalWriteFast(HIGH);
   }
   else {
-    digitalWrite(redPin, LOW);
+    redLed.digitalWriteFast(LOW);
   }
 }
 
@@ -106,15 +122,13 @@ void ISRend() {
   if (!digitalRead(endSwitch)) {
     stepper.stop();
     state = autoDisabled;
-    buttonsEnabled = false;
-    digitalWrite(redPin, HIGH);
+    redLed.digitalWriteFast(HIGH);
   }
   else {
-    digitalWrite(redPin, LOW);
+    redLed.digitalWriteFast(LOW);
   }
 }
-
-//======================
+//==============================================================
 
 void setup() {
   Serial.begin(baudRate);
@@ -122,10 +136,15 @@ void setup() {
   stepper.setMaxSpeed(400);  //Con la reduccion de 1:60 y el microswitch de 400 esto es 1 RPM en la plataforma
   stepper.setAcceleration(200);  //Esto hay que calibrar y elegirlo
 
-  pinMode(homeSwitch, INPUT_PULLUP);
-  pinMode(endSwitch, INPUT_PULLUP);
-  pinMode(greenPin, OUTPUT);
-  pinMode(redPin, OUTPUT);
+  greenLed.pinModeFast(OUTPUT);
+  redLed.pinModeFast(OUTPUT);
+
+  homeButton.setPin();
+  stopButton.setPin();
+  leftButton.setPin();
+  rightButton.setPin();
+  homeMicroswitch.setPin();
+  endMicroswitch.setPin();
 
   attachInterrupt(digitalPinToInterrupt(homeSwitch), ISRhome, CHANGE);
   attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
@@ -137,6 +156,7 @@ void setup() {
 //============================================================
 void loop() {
 
+  startTime = micros();
   readserial();
   if (newData == true) {
     strcpy(tempChars, receivedChars);
@@ -153,19 +173,30 @@ void loop() {
 
   stepper.run();
 
-  if (stepper.isRunning()) {
-    digitalWrite(greenPin, HIGH);
+  static bool ledOn;
+  if (stepper.isRunning() && !ledOn) {
+    greenLed.digitalWriteFast(HIGH);
+    ledOn = true;
   }
   else {
-    digitalWrite(greenPin, LOW);
+    if (ledOn) {
+      greenLed.digitalWriteFast(LOW);
+      ledOn = false;
+    }
     if ((state == autoDisabled) && !buttonsEnabled) {
-      //Si los deshabilité y terminó de moverse, los vuelvo a prender
       buttonsEnabled = true;
     }
   }
 
+  endTime = micros();
+  execTime = endTime - startTime;
   if (Print) {
-    Serial.println(stepper.currentPosition());
+    Serial.print(execTime);
+    if (Print2) {
+      Serial.print("\t");
+      Serial.print(stepper.currentPosition());
+    }
+    Serial.println(",0,1000");
   }
 
 }
@@ -176,28 +207,40 @@ void loop() {
 //=========================
 
 void gohome() {
-  digitalWrite(greenPin, HIGH);
-  Serial.println("Start homing");
+  homing = true;
+  stepper.setAcceleration(400);
+  greenLed.digitalWriteFast(HIGH);
+  //Serial.println("Start homing");
 
   while (!homeMicroswitch.isOn()) {
-    stepper.move(-100);
+    stepper.move(-50); //probar con distintos valores aca
     stepper.run();
   }
 
-  Serial.println("Step back");
+  //Serial.println("Step back");
   stepper.setCurrentPosition(0); //para medir el backlash
 
   while (homeMicroswitch.isOn()) {
-    stepper.move(66);
+    stepper.move(5); //y aca
     stepper.run();
   }
 
-  Serial.println("Done");
-  backlash = stepper.currentPosition(); //cuantos pasos dió desde que pisó el switch hasta que lo soltó
+  //Serial.println("Done");
+  //float backlash1 = (float) stepper.currentPosition();//cuantos pasos dió desde que pisó el switch hasta que lo soltó
+  //float prop = 0.95;
+  //backlash = prop * backlash1;
+
+  backlash = stepper.currentPosition();
   stepper.setCurrentPosition(0);
-  digitalWrite(greenPin, LOW);
+  greenLed.digitalWriteFast(LOW);
+
+  //Para que no interfiera con la correccion de backlash
+  if (direc == IZQ) {
+    skipNext = true;
+  }
   direc = DER;
-  skipNext = true;
+  stepper.setAcceleration(200);
+  homing = false;
 }
 
 void automed() {
@@ -217,12 +260,12 @@ void automed() {
         startMillis = millis();
         current_loop++;
         if (current_loop > recorrido.total_loops) {
-          Serial.println("Termine las vueltas, cambio a disabled y reseteo loops");
+          //Serial.println("Termine las vueltas, cambio a disabled y reseteo loops");
           state = autoDisabled;
           current_loop = 0;
         }
         else {
-          Serial.println("Cambio a waiting start");
+          //Serial.println("Cambio a waiting start");
           state = waitingStart;
         }
       }
@@ -230,10 +273,6 @@ void automed() {
 
     case waitingStart:
       if (millis() - startMillis > wait) {
-        Serial.println("Cambiando direccion");
-        //stepper.runToNewPosition(recorrido.start + backlash);
-        //stepper.setCurrentPosition(recorrido.start);
-
         //Serial.println("Cambio a going to finish");
         stepper.moveTo(recorrido.finish);
         direc = getDirection();
@@ -244,7 +283,7 @@ void automed() {
 
     case goingToFinish:
       if (stepper.distanceToGo() == 0) {
-        Serial.println("Cambio a waiting finish");
+        //Serial.println("Cambio a waiting finish");
         stopMillis = millis();
         state = waitingFinish;
       }
@@ -252,10 +291,6 @@ void automed() {
 
     case waitingFinish:
       if (millis() - stopMillis > wait) {
-        Serial.println("Cambiando direccion");
-        //stepper.runToNewPosition(recorrido.finish - backlash);
-        //stepper.setCurrentPosition(recorrido.finish);
-
         //Serial.println("Cambio a going to stsart");
         stepper.moveTo(recorrido.start);
         direc = getDirection();
@@ -314,7 +349,6 @@ void serialCommands(Message message) {
   }
   else if (message.command == "HOM") {
     Serial.println("HOM");
-    //direc = DER;
     gohome();
   }
   else if (message.command == "SCP") {
@@ -334,10 +368,16 @@ void serialCommands(Message message) {
   else if (message.command == "PRF") {
     Print = false;
   }
+  else if (message.command == "P2T") {
+    Print2 = true;
+  }
+  else if (message.command == "P2F") {
+    Print2 = false;
+  }
   else if (message.command == "DIR") {
     Serial.println(direc);
   }
-  else if (message.command == "BLK") {
+  else if (message.command == "BLK") {  //en lo posible no usar esto porque bloquea, es preferible usar REL
     Serial.println("BLK");
     stepper.setMaxSpeed(message.integer_input);
     stepper.move(message.long_input);
@@ -355,9 +395,9 @@ void serialCommands(Message message) {
     direc = getDirection();
   }
   else if (message.command == "ANG") {
-    float microstep = 400;
-    float reduccion = 60;
-    float conv = 360 / (microstep * reduccion); //con reduccion de 1:60 y microstep 400
+    const float microstep = 400;
+    const float reduccion = 60;
+    const float conv = 360 / (microstep * reduccion);
     float angulo = message.integer_input / conv;
     Serial.println(angulo);
   }
@@ -453,6 +493,10 @@ Message parseData() {      // Separar los datos y armar el mensaje
   return newMessage;
 }
 
+//==============================
+// Misc
+//==============================
+
 String getInfo() {
   const String string1 = "Auto State: ",
                string2 = "Buttons State ",
@@ -477,20 +521,21 @@ void blinkLeds(const int num_blinks, const long interval) {
   int blinks = 0;
   while (blinks < num_blinks) {
     while ((millis() - time_) < interval) {
-      digitalWrite(redPin, HIGH);
-      digitalWrite(greenPin, HIGH);
+      redLed.digitalWriteFast(HIGH);
+      greenLed.digitalWriteFast(HIGH);
     }
     time_ = millis();
     while ((millis() - time_) < interval) {
-      digitalWrite(redPin, LOW);
-      digitalWrite(greenPin, LOW);
+      redLed.digitalWriteFast(LOW);
+      greenLed.digitalWriteFast(LOW);
     }
     time_ = millis();
     blinks++;
   }
 }
 
-
+//Para saber la direccion del proximo movimiento
+//Hay que correrla si y solo si se cambia el target
 direccion getDirection() {
   if (stepper.distanceToGo() > 0) {
     return DER;
@@ -504,10 +549,10 @@ direccion getDirection() {
 }
 
 void updateDirection() {
-  static direccion old_direc = DER;  //se inicializa a 0 q es igual a izq
+  static direccion old_direc = DER;  //la primer correción no se va a hacer porque no tiene calibrado el backlash asi que no importa esto
 
-  if ((direc != old_direc) && (direc != DET)) {
-    Serial.println("Direction has changed!");
+  if ((direc != old_direc) && (direc != DET)) { //que no considere detenido como un cambio de dirección
+    //Serial.println("Direction has changed!");
     directionHasChanged = true;
     old_direc = direc;
   }
@@ -522,19 +567,19 @@ void adjustBacklash() {
       skipNext = false;
     }
     else {
-      Serial.println("Adjusting backlash");
+      //Serial.println("Adjusting backlash");
       long target = stepper.targetPosition();
       long current = stepper.currentPosition();
       if (direc == DER) {
-        stepper.move(backlash); //movete -backlash- pasos positivos/CW
+        stepper.move(backlash); //movete -backlash- pasos positivos/derecha
       }
       else if (direc == IZQ) {
-        stepper.move(-backlash); //movete -backlash- pasos negativos/CCW
+        stepper.move(-backlash); //movete -backlash- pasos negativos/izquierda
       }
       stepper.runToPosition();
       stepper.setCurrentPosition(current);
       stepper.moveTo(target);
-      Serial.println("Done");
+      //Serial.println("Done");
     }
   }
 }
