@@ -145,7 +145,7 @@ void ISRhome() {
 void ISRend() {
   if (!digitalRead(endSwitch)) {
     stepper.stop();
-    state = autoDisabled;
+    state = canceled;
     state2 = stepDisabled;
     redLed.digitalWriteFast(HIGH);
     //digitalWrite(redPin,HIGH);
