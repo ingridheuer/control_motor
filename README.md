@@ -11,6 +11,7 @@ Por seguridad agregamos interrupciones con microswitches de fin de recorrido, qu
 * Homing automático
 * Interrupciones de seguridad con microswitches de fin de recorrido
 * Movimiento preseteado automático: se puede elegir principio y fin, velocidad de ida y vuelta y cantidad de repeticiones.
+* Movimiento automático escalonado
 * Armé una clase para manejar funciones de pulsadores y switches, con debounce (filtrado de ruidos).
 * Corrección automática de backlash (juego de la reducción) en cambio de dirección
 * Programa de LabVIEW para controlar con interfaz gráfica y realizar mediciones 
