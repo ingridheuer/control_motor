@@ -16,7 +16,6 @@ Por seguridad agregamos interrupciones con microswitches de fin de recorrido, qu
 * Programa de LabVIEW para controlar con interfaz gráfica y realizar mediciones 
 * Protocolo de comunicación por serial con LabVIEW
 
-Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/).
+Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/) para controlar el motor y [digitalPinFast](https://github.com/TheFidax/digitalPinFast) para reducir el tiempo de ejecución.
 
-Para calibración y errores ver las [ecuaciones que usa la librería](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
-
+Para calibración y errores ver las [ecuaciones que usa Accelstepper](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
