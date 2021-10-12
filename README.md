@@ -20,4 +20,4 @@ Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/Accel
 
 Para calibración y errores ver las [ecuaciones que usa Accelstepper](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
 
-Estoy armando una librería para el manejo de los comandos, para mejorar esa parte del código. Cuando la tenga la subo acá.
+Estoy armando una librería para el manejo de los comandos, para mejorar esa parte del código.
