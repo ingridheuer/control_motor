@@ -19,3 +19,5 @@ Por seguridad agregamos interrupciones con microswitches de fin de recorrido, qu
 Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/) para controlar el motor y [digitalPinFast](https://github.com/TheFidax/digitalPinFast) para reducir el tiempo de ejecución.
 
 Para calibración y errores ver las [ecuaciones que usa Accelstepper](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
+
+Estoy armando una librería para el manejo de los comandos, para mejorar esa parte del código. Cuando la tenga la subo acá.
