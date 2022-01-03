@@ -45,7 +45,7 @@ digitalPinFast redLed(redPin);
 // Defino variables
 //==================
 
-//Variables lógicas para habilitar y deshabilitar pulsadores o indicar estados del programa
+//Algunas flags para habilitar y deshabilitar pulsadores o indicar estados del programa
 volatile bool rightButtonEnabled = true; //volatile porque los interrupts la pueden modificar
 volatile bool leftButtonEnabled = true;
 volatile bool interrupted = false;
