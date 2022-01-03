@@ -9,7 +9,7 @@
 //Incluyo librerías y archivos de clases
 #include <AccelStepper.h> //librería para control de steppers
 #include <digitalPinFast.h> //librería para mejorar la velocidad de pines digitales
-#include <PushButton.h> //clase que arme controlar los botones
+#include <PushButton.h> //clase que armamos controlar los botones
 
 //Defino los pins como constantes
 const byte homeSwitch = 2,
@@ -23,11 +23,13 @@ const byte homeSwitch = 2,
            greenPin = 10,
            redPin = 11;
 
-//Creo objetos: motor, botones y leds
-AccelStepper stepper(1, pulsePin, dirPin); // 1 = driver
+//Creo objetos: motor, botones y leds. El primer argumento indica que estamos usando un driver para controlar el motor.
+AccelStepper stepper(1, pulsePin, dirPin);
 
-//Elegí un delay de 50ms para todos los botones/switches, pero se pueden configurar por separado si hace falta
+//Elegí un delay de 50ms para filtrar el ruido de los botones y microswitches. Se pueden configurar por separado si hace falta
 const long debounceDelay = 50;
+
+//Inicializamos los objetos pulsadores (ver documentacion de clase PushButton)
 PushButton rightButton(rightPin, false, debounceDelay);
 PushButton leftButton(leftPin, false, debounceDelay);
 PushButton stopButton(stopPin, true, debounceDelay);
@@ -35,13 +37,22 @@ PushButton homeButton(homePin, true, debounceDelay);
 PushButton homeMicroswitch(homeSwitch, false, debounceDelay);
 PushButton endMicroswitch(endSwitch, false, debounceDelay);
 
+//Inicializamos los objetos de pin rápido
 digitalPinFast greenLed(greenPin);
 digitalPinFast redLed(redPin);
 
-//volatile porque los interrupts las pueden modificar
-//volatile bool buttonsEnabled = true;  
-volatile bool rightButtonEnabled = true;
+//==================
+// Defino variables
+//==================
+
+//Algunas flags para habilitar y deshabilitar pulsadores o indicar estados del programa
+volatile bool rightButtonEnabled = true; //volatile porque los interrupts la pueden modificar
 volatile bool leftButtonEnabled = true;
+volatile bool interrupted = false;
+bool homing = false;
+
+//La tasa de comunicación por USB
+long baudRate = 115200;
 
 //=====================================
 // Variables para movimiento automático
@@ -54,6 +65,7 @@ enum states
 };
 volatile states state = autoDisabled;   //volatile porque los interrupts la pueden modificar
 
+//Armamos un tipo de variable Recorrido para contener todos los parámetros del recorrido automático
 typedef struct {
   long start;
   long finish;
@@ -63,9 +75,10 @@ typedef struct {
 } Recorrido;
 
 Recorrido recorrido;
-const long wait = 1000;
+const long wait = 1000; //el tiempo de espera en cada punta
 
 //===================================
+//Estados que puede tomar el programa cuando está en modo automático por pasos
 enum states2
 {
   stepping, waiting, stepDisabled
@@ -75,13 +88,13 @@ volatile states2 state2 = stepDisabled;
 long total_lenght = 0;
 long step_lenght = 330;
 
-bool homing = false;
-volatile bool interrupted = false;
-//=====================================
-//Variables para calibración y backlash
-//=====================================
+//==========================
+//Variables para calibración
+//==========================
+//Variable para guardar el juego angular
 long backlash = 0;
 
+//Variables para registrar la dirección
 bool directionHasChanged = false;
 bool skipNext = false;
 
@@ -95,21 +108,25 @@ direccion direc = DER;
 // Si entraron datos por serial o no
 bool newData = false;
 
-//El mensaje que tiene que armar
+//Acá se van a ir guardando los datos a medida que los recibe y antes de interpretarlos
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChars[numChars];
+
+//Armamos un tipo de variable Message para contener todos los parámetros del mensaje una vez que lo interpreta
 typedef struct {
   String command;
   int integer_input;
   long long_input;
 } Message;
 
-const byte numChars = 32;
-char receivedChars[numChars];
-char tempChars[numChars];
-
 //=========================
 // Rutinas de interrupción
 //=========================
 
+//Definimos las rutinas de servicio de interrupción que se van a ejecutar cuando se activan los microswitches
+
+//Microswitch de home
 void ISRhome() {
   if (!digitalRead(homeSwitch)) {
     if (!homing && (state != waitingStart)) {
@@ -127,7 +144,7 @@ void ISRhome() {
   }
 }
 
-
+//Microswitch de fin de recorrido
 void ISRend() {
   if (!digitalRead(endSwitch)) {
     stepper.stop();
@@ -144,11 +161,12 @@ void ISRend() {
   }
 }
 
-long baudRate = 115200;
-
 /*
-//Esto es para ver el tiempo de ejecución del programa. 
-//Hace un plot que se puede ver con el serial plotter en el IDE de Arduino.
+//Por ahi en algun momento sea util ver el tiempo de ejecucion del programa
+//Esto mide cuanto tarda el loop y lo muestra en el serial plotter del Arduino
+//Es bastante rudimentario pero sirve para tener una aproximacion
+//Si no lo estan usando dejar comentado esto y la parte que esta al final del loop
+
 bool Print = false; //Plotea el tiempo de ejecucion
 bool Print2 = false; //Plotea la posicion del motor
 unsigned long startTime;
@@ -156,12 +174,17 @@ unsigned long endTime;
 unsigned long execTime;
 */
 
+//=============
+// Setup y loop
+//=============
+
 void setup() {
-  Serial.begin(baudRate);
+  Serial.begin(baudRate); //abrimos el puerto USB
 
-  stepper.setMaxSpeed(400);  //Con la reduccion de 1:60 y el microswitch de 400 esto es 1 RPM en la plataforma
-  stepper.setAcceleration(150);  //Esto hay que calibrar y elegirlo
+  stepper.setMaxSpeed(400); //configuramos velocidad y aceleración maximas
+  stepper.setAcceleration(150); 
 
+  //configuramos todos los pines
   greenLed.pinModeFast(OUTPUT);
   redLed.pinModeFast(OUTPUT);
 
@@ -172,33 +195,36 @@ void setup() {
   homeMicroswitch.setPin();
   endMicroswitch.setPin();
 
+  //agregamos rutinas de interrupción
   attachInterrupt(digitalPinToInterrupt(homeSwitch), ISRhome, CHANGE);
   attachInterrupt(digitalPinToInterrupt(endSwitch), ISRend, CHANGE);
 
+  //indicamos encendido prendiendo los leds, 3 veces en un intervalo de 300 ms
   blinkLeds(3, 300);
-
 }
 
 void loop() {
-
+  
   //startTime = micros();
-  readserial();
+  readserial(); //se fija si llegaron mensajes
   if (newData == true) {
     strcpy(tempChars, receivedChars);
-    Message newMessage = parseData();
-    newData = false;
-    serialCommands(newMessage);
+    Message newMessage = parseData();   //interpreta los datos y los guarda en un mensaje
+    newData = false;                    
+    serialCommands(newMessage);         //ejecuta la función que corresponde al mensaje
   }
 
-  buttonCommands();
-  automed();
+  buttonCommands();                     //lee estado de pulsadores y ejecuta funciones asociadas
+  automed();                            //modos automáticos
   autostep();
 
-  updateDirection();
-  adjustBacklash();
+  updateDirection();                    //actualiza la dirección
+  adjustBacklash();                     //corrige backlash si es necesario
 
-  stepper.run();
+  stepper.run();                        //da un paso
 
+  //esta parte del código maneja el led verde que se enciende si el motor está activo
+  //y se encarga de desactivar o activar pulsadores si es necesario
   static bool ledOn;
   if (stepper.isRunning() && !ledOn) {
     greenLed.digitalWriteFast(HIGH);
@@ -214,8 +240,7 @@ void loop() {
       leftButtonEnabled = true;
     }
   }
-
-  /*
+    /*
     endTime = micros();
     execTime = endTime - startTime;
     if (Print) {
@@ -229,32 +254,36 @@ void loop() {
   */
 }
 
-//=========================
-// Funciones de movimiento
-//=========================
+//===========
+// Funciones
+//===========
 
+//Funcion de homing automático
 void gohome() {
   homing = true;
   greenLed.digitalWriteFast(HIGH);
-  //Serial.println("Start homing");
 
+  //avanza de a 133 pasos (se traducen en aprox. 2 grados en nuestro dispositivo) hasta activar el microswitch
+  //ajustar este valor si hace falta
   while (!homeMicroswitch.isOn()) {
-    stepper.move(-133); //Ajustar este valor en calibracion
+    stepper.move(-133);
     stepper.run();
   }
+  
+  //se activó, define esa posición como 0
+  stepper.setCurrentPosition(0); 
 
-  //Serial.println("Step back");
-  stepper.setCurrentPosition(0); //para medir el backlash
-
+  //retrocede de a 20 pasos hasta que desactiva el microswitch
+  //ajustar este valor si hace falta
   while (homeMicroswitch.isOn()) {
-    stepper.move(20); //Ajustar este valor tambien
+    stepper.move(20);
     stepper.run();
   }
 
+  //guardamos los pasos que dió como backlash y redefinimos la posición de referencia
   backlash = stepper.currentPosition();
   stepper.setCurrentPosition(0);
   greenLed.digitalWriteFast(LOW);
-  //digitalWrite(greenPin,LOW);
 
   //Para que no interfiera con la correccion de backlash
   if (direc == IZQ) {
@@ -264,8 +293,11 @@ void gohome() {
   homing = false;
 }
 
+//Función de recorrido de ida y vuelta automático
+//Ver diagrama de estados en sección control y automatización del informe (para el laboratorio)
 void automed() {
 
+  //Variables para registrar el tiempo y la cantidad de vueltas
   static unsigned long startMillis;
   static unsigned long stopMillis;
   static int current_loop;
@@ -273,9 +305,11 @@ void automed() {
   switch (state) {
 
     case autoDisabled:
+      //si está deshabilitado no hace nada
       break;
 
     case canceled:
+      //si se cancela resetea contadores y pulsadores antes de pasar a disabled
       current_loop = 0;
       rightButtonEnabled = true;
       leftButtonEnabled = true;
@@ -287,14 +321,12 @@ void automed() {
         startMillis = millis();
         current_loop++;
         if (current_loop > recorrido.total_loops) {
-          //Serial.println("Termine las vueltas, cambio a disabled y reseteo loops");
           state = autoDisabled;
           current_loop = 0;
           rightButtonEnabled = true;
           leftButtonEnabled = true;
         }
         else {
-          //Serial.println("Cambio a waiting start");
           state = waitingStart;
         }
       }
@@ -302,7 +334,6 @@ void automed() {
 
     case waitingStart:
       if (millis() - startMillis > wait) {
-        //Serial.println("Cambio a going to finish");
         stepper.moveTo(recorrido.finish);
         direc = getDirection();
         stepper.setMaxSpeed(recorrido.speed_ida);
@@ -312,7 +343,6 @@ void automed() {
 
     case goingToFinish:
       if (stepper.distanceToGo() == 0) {
-        //Serial.println("Cambio a waiting finish");
         stopMillis = millis();
         state = waitingFinish;
       }
@@ -320,7 +350,6 @@ void automed() {
 
     case waitingFinish:
       if (millis() - stopMillis > wait) {
-        //Serial.println("Cambio a going to stsart");
         stepper.moveTo(recorrido.start);
         direc = getDirection();
         stepper.setMaxSpeed(recorrido.speed_vuelta);
@@ -330,11 +359,11 @@ void automed() {
   }
 }
 
+//Función de recorrido automático de a pasos
 void autostep() {
 
-  //se inicializan a 0 por default
+  //variables para registrar el tiempo y los pasos dados
   static unsigned long startMillis;
-  //static unsigned long stopMillis;
   static long current_step;
 
   switch (state2) {
@@ -347,14 +376,10 @@ void autostep() {
         startMillis = millis();
         current_step += step_lenght;
         if (current_step > total_lenght) {
-          //Serial.println("Termine las vueltas, cambio a disabled y reseteo loops");
           state2 = stepDisabled;
           current_step = 0;
-          //rightButtonEnabled = true;
-          //leftButtonEnabled = true;
         }
         else {
-          //Serial.println("Cambio a waiting start");
           state2 = waiting;
         }
       }
@@ -362,7 +387,6 @@ void autostep() {
 
     case waiting:
       if (millis() - startMillis > wait) {
-        //Serial.println("Cambio a going to finish");
         stepper.move(step_lenght);
         direc = getDirection();
         state2 = stepping;
@@ -372,23 +396,30 @@ void autostep() {
 }
 
 
-//====================================
-// Funciones para comandos de LabVIEW
-//====================================
+//======================================
+// Funcion para interpretar los comandos
+//======================================
+
+//Esta funcion toma la variable mensaje y evalúa el comando contra todos los comandos definidos para ver que función tiene que correr
+//Siempre envía una respuesta para cumplir el protocolo de command-response
+//La tabla de comandos y que significan esta en comandos.txt
+//Para agregar comandos nuevos simplemente agregar otra condicion, respetando el formato message.command = "COM" codigo del comando,seguido de lo que queremos que ejecute.
+//Para recibir parametros numericos usar message.long_input y message.integer_input. Cuidado con el tamaño de los numeros que guardan en cada variable.
 
 void serialCommands(Message message) {
   if (message.command == "MES") {
-    Serial.println(stepper.currentPosition());
+    //Medir posicion
+    Serial.println(stepper.currentPosition()); 
   }
   else if (message.command == "STP") {
+    //Stop
     Serial.println("STP");
     stepper.stop();
     state = canceled;
     state2 = stepDisabled;
-    //rightButtonEnabled = false;
-    //leftButtonEnabled = false;
   }
   else if (message.command == "SET") {
+    //Setpoint o posicion objetivo
     Serial.println("SET");
     rightButtonEnabled = false;
     leftButtonEnabled = false;
@@ -397,20 +428,24 @@ void serialCommands(Message message) {
     direc = getDirection();
   }
   else if (message.command == "ACC") {
+    //Aceleracion
     Serial.println("ACC");
     stepper.setAcceleration(message.integer_input);
   }
   else if (message.command == "VUE") {
+    //Posicion de partida y velocidad de vuelta
     Serial.println("VUE");
     recorrido.start = message.long_input;
     recorrido.speed_vuelta = message.integer_input;
   }
   else if (message.command == "IDA") {
+    //Posicion de llegada y velocidad de ida
     Serial.println("IDA");
     recorrido.finish = message.long_input;
     recorrido.speed_ida = message.integer_input;
   }
   else if (message.command == "AUT") {
+    //Configura e inicializa el movimiento automatico
     Serial.println("AUT");
     recorrido.total_loops = message.integer_input;
     stepper.moveTo(recorrido.start);
@@ -420,39 +455,34 @@ void serialCommands(Message message) {
     state = goingToStart;
   }
   else if (message.command == "BCK") {
+    //Imprime el backlash
     Serial.println(backlash);
   }
   else if (message.command == "HOM") {
+    //Homing
     Serial.println("HOM");
     gohome();
   }
   else if (message.command == "SCP") {
+    //Set current position (Definir manualmente la posicion)
     Serial.println("SCP");
     stepper.setCurrentPosition(message.long_input);
   }
   else if (message.command == "INF") {
+    //Info de la configuracion actual, **usar SOLO con el serial monitor del IDE**
     String info = getInfo();
     Serial.println(info);
   }
   else if (message.command == "IDN") {
-    Serial.println("Ver tabla de comandos en //escritorio//ingridmarco//control_motor//comandos"); //Mensaje para el laboratorio
-  }
-  else if (message.command == "PRT") {
-    Print = true;
-  }
-  else if (message.command == "PRF") {
-    Print = false;
-  }
-  else if (message.command == "P2T") {
-    Print2 = true;
-  }
-  else if (message.command == "P2F") {
-    Print2 = false;
+    Serial.println("Ver tabla de comandos en /escritorio/ingridmarco/control_motor/comandos"); //Mensaje para el laboratorio
   }
   else if (message.command == "DIR") {
+    //Imprime la direccion actual
     Serial.println(direc);
   }
-  else if (message.command == "BLK") {  //en lo posible no usar esto porque bloquea, es preferible usar REL
+  else if (message.command == "BLK") {
+    //Se mueve hasta long_input con velocidad integer_input BLOQUEANDO
+    //en lo posible no usar esto, es preferible usar REL
     Serial.println("BLK");
     stepper.setMaxSpeed(message.integer_input);
     stepper.move(message.long_input);
@@ -460,23 +490,19 @@ void serialCommands(Message message) {
     stepper.runToPosition();
   }
   else if (message.command == "SBK") {
+    //Definir manualmente el backlash
     backlash = message.long_input;
     Serial.println("SBK");
   }
   else if (message.command == "REL") {
+    //Se mueve long_input pasos relativos a la posicion actual, con velocidad integer_input
     Serial.println("REL");
     stepper.setMaxSpeed(message.integer_input);
     stepper.move(message.long_input);
     direc = getDirection();
   }
-  else if (message.command == "ANG") {
-    const float microstep = 400;
-    const float reduccion = 60;
-    const float conv = 360 / (microstep * reduccion);
-    float angulo = message.integer_input / conv;
-    Serial.println(angulo);
-  }
   else if (message.command == "STE") {
+    //Configura e inicializa el movimiento automatico por pasos
     Serial.println("STE");
     step_lenght = message.integer_input;
     total_lenght = message.long_input;
@@ -485,36 +511,33 @@ void serialCommands(Message message) {
     state2 = stepping;
   }
   else {
+    //si el comando no coincide con ninguno, se responde NAK (not acknowleged)
     Serial.println("NAK");
   }
 }
 
 
 //=============
-// Botones
+// Pulsadores
 //=============
 
+//Esta función lee el estado de los botones ayudandose con los métodos de la clase PushButton y define que acciones
+//tienen que ejecutarse si se activan
 void buttonCommands() {
   if (stopButton.isOn()) {
-    //Serial.println("Stop button pressed");
     stepper.stop();
     state = canceled;
     state2 = stepDisabled;
-    //rightButtonEnabled = false;
-    //leftButtonEnabled = false;
   }
   else if (rightButtonEnabled && rightButton.isOn()) {
-    //Serial.println("+1");
-    stepper.move(133); //Calibrar y elegir este valor
+    stepper.move(133);
     direc = getDirection();
   }
   else if (leftButtonEnabled && leftButton.isOn()) {
-    //Serial.println("-1");
     stepper.move(-133);
     direc = getDirection();
   }
   else if (homeButton.isOn()) {
-    //Serial.println("Home button pressed");
     gohome();
   }
 }
@@ -524,7 +547,7 @@ void buttonCommands() {
 // Comunicación por Serial
 //=========================
 
-
+//Esta función lee el puerto USB y va guardando los datos en un array
 void readserial() {
   static boolean recvInProgress = false;
   static byte ndx = 0;
@@ -544,7 +567,7 @@ void readserial() {
         }
       }
       else {
-        receivedChars[ndx] = '\0'; 
+        receivedChars[ndx] = '\0'; // terminate the string
         recvInProgress = false;
         ndx = 0;
         newData = true;
@@ -557,8 +580,9 @@ void readserial() {
   }
 }
 
-
-Message parseData() {      // Separar los datos y armar el mensaje
+// Esta función detecta las comas que separan cada parámetro y guarda cada parte en una variable del tipo mensaje
+// convierte los datos guardados, que son caracteres, a variables numéricas del tipo integer
+Message parseData() {      
   Message newMessage;
   char received[numChars] = {0};
 
@@ -577,13 +601,12 @@ Message parseData() {      // Separar los datos y armar el mensaje
   return newMessage;
 }
 
+//==================================
+//Correccion de direccion y backlash
+//==================================
 
-//===================================
-// Correccion de direccion y backlash
-//===================================
-
-//Para saber la direccion del proximo movimiento
-//Hay que correrla si y solo si se cambia el target
+//Esta funcion calcula la dirección actual del motor
+//Hay que correrla cada vez que se usa un comando que pueda cambiar la posición objetivo
 direccion getDirection() {
   if (stepper.distanceToGo() > 0) {
     return DER;
@@ -596,6 +619,7 @@ direccion getDirection() {
   }
 }
 
+//Esta función se fija si la dirección cambió y avisa al resto del programa si hay que corregirla o no
 void updateDirection() {
   static direccion old_direc = DER;  //la primer correción no se va a hacer porque no tiene calibrado el backlash asi que no importa esto
 
@@ -609,34 +633,37 @@ void updateDirection() {
   }
 }
 
+//Si la dirección cambió, esta función hace que el motor de los pasos necesarios para corregir el backlash
+//antes de ir a la posición objetivo que se pidió
+//una vez que corrigió, redefine la posición actual y la de objetivo
 void adjustBacklash() {
   if (directionHasChanged) {
     if (skipNext) {
       skipNext = false;
     }
     else {
-      //Serial.println("Adjusting backlash");
       long target = stepper.targetPosition();
       long current = stepper.currentPosition();
       if (direc == DER) {
-        stepper.move(backlash); //movete -backlash- pasos positivos/derecha
+        stepper.move(backlash); //mueve -backlash- pasos positivos/derecha
       }
       else if (direc == IZQ) {
-        stepper.move(-backlash); //movete -backlash- pasos negativos/izquierda
+        stepper.move(-backlash); //mueve -backlash- pasos negativos/izquierda
       }
       stepper.runToPosition();
       stepper.setCurrentPosition(current);
       stepper.moveTo(target);
-      //Serial.println("Done");
     }
   }
 }
 
 
-//========
-// Misc
-//========
+//=========
+// Extras
+//=========
 
+//Esta funcion prende y apaga los leds del gabinete
+//tomando como argumentos el numero de veces y el intervalo de tiempo
 void blinkLeds(const int num_blinks, const long interval) {
   long time_ = millis();
   int blinks = 0;
@@ -644,15 +671,11 @@ void blinkLeds(const int num_blinks, const long interval) {
     while ((millis() - time_) < interval) {
       redLed.digitalWriteFast(HIGH);
       greenLed.digitalWriteFast(HIGH);
-      //digitalWrite(greenPin,HIGH);
-      //digitalWrite(redPin,HIGH);
     }
     time_ = millis();
     while ((millis() - time_) < interval) {
       redLed.digitalWriteFast(LOW);
       greenLed.digitalWriteFast(LOW);
-      //digitalWrite(greenPin,LOW);
-      //digitalWrite(redPin,LOW);
     }
     time_ = millis();
     blinks++;
@@ -677,4 +700,3 @@ String getInfo() {
                 + string6 + recorrido.speed_ida + espacio + recorrido.speed_vuelta + endl;
   return info;
 }
-
