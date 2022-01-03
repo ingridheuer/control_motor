@@ -1,24 +1,28 @@
-# Control y automatización de electroimán rotante con motor paso a paso (Proyecto de laboratorio 6 y 7)
+# Control y automatización de electroimán rotante
 
-Diseñado para automatizar mediciones angulares en experimentos de superconductividad, en el laboratorio de bajas temperaturas del DF, FCEN (UBA).
-El programa controla un motor paso a paso que se usa para girar la plataforma que sostiene al electroimán. La idea es poder automatizar el movimiento de la plataforma para poder realizar más mediciones sin tener que rotar el equipo manualmente.
+## About:
 
-Queríamos darle bastante flexibildiad al código para que más adelante se puedan agregar comandos y funciones nuevas, así que usamos un "protocolo" sencillo para usar comandos desde el monitor serial del IDE. Armamos también un programa en LabVIEW que se comunica con el Arduino usando el mismo protocolo, para tener una interfaz gráfica desde la PC. Para que el sistema pueda ser independiente de la PC, también agregamos controles con pulsadores.
+Este programa es parte de un proyecto de laboratorio 6 y 7, donde diseñamos un sistema para controlar la rotación de un electroimán que se usa para experimentos de superconductividad. 
+Las mediciones se realizaban girando el electroimán manualmente, lo cual era muy tedioso y complicaba la adquisición de datos.
+Nosotros diseñamos un sistema mecánico con un motor para rotar la plataforma, este programa se encarga de controlar ese motor (entre otras cosas).
 
-Por seguridad agregamos interrupciones con microswitches de fin de recorrido, que también usamos para homing y calibración.
+El programa cumple principalmente 3 funciones:
+- Controla un motor stepper con varias funciones para automatizar y medir su rotación.
+- Implementa un "protocolo" simple para controlarlo con comandos de texto (que podría ser adaptado para controlar sistemas similares).
+- Tiene una interfaz gráfica para facilitar su uso e integrarlo con otros sistemas de medición.
+
+Para controlar y automatizar el motor usamos un Arduino UNO, para la interfaz gráfica armamos un programa de LabVIEW que se comunica con el Arduino con protocolo VISA.
 
 ## Algunas funciones:
-* Homing automático
-* Interrupciones de seguridad con microswitches de fin de recorrido
-* Movimiento preseteado automático: se puede elegir principio y fin, velocidad de ida y vuelta y cantidad de repeticiones.
-* Movimiento automático escalonado
-* Armé una clase para manejar funciones de pulsadores y switches, con debounce (filtrado de ruidos).
-* Corrección automática de backlash (juego de la reducción) en cambio de dirección
-* Programa de LabVIEW para controlar con interfaz gráfica y realizar mediciones 
-* Protocolo de comunicación por serial con LabVIEW
+* Homing automático (con microswitch, se podría adaptar a un sensor óptico)
+* Interrupciones de seguridad con microswitches de fin de recorrido (idem anterior)
+* Movimiento preseteado automático: se define principio y fin, velocidad de ida y vuelta y cantidad de repeticiones, el equipo hace todo el recorrido y mide automáticamente.
+* Movimiento escalonado: como el anterior, pero definiendo un "ancho" de pasos y deteniendose en cada paso (esto mejora la precisión angular).
+* Manejo de pulsadores y microswitches, con debounce*.
+* Corrección automática de backlash** al cambiar de dirección.
 
 Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/) para controlar el motor y [digitalPinFast](https://github.com/TheFidax/digitalPinFast) para reducir el tiempo de ejecución.
 
-Para calibración y errores ver las [ecuaciones que usa Accelstepper](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
+Para calibración del motor y curvas de velocidad ver las [ecuaciones que usa Accelstepper](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
 
-Estoy armando una librería para el manejo de los comandos, para mejorar esa parte del código.
+No usamos librerías de Arduino en el programa de LabVIEW, manejamos la comunicación por serial con los subVI's de VISA y el protocolo de texto que armamos.
