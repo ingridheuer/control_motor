@@ -24,8 +24,11 @@ Para controlar y automatizar el motor usamos un Arduino UNO, para la interfaz gr
 \* Filtrado de ruidos en la señal de los pulsadores y microswitches.\
 \** Al cambiar de dirección el motor se puede "desacoplar" del eje y deja de transmitir la rotación hasta que se vuelve a acoplar.
 
+##
+
 Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/) para controlar el motor y [digitalPinFast](https://github.com/TheFidax/digitalPinFast) para reducir el tiempo de ejecución.
 
 Para calibración del motor y curvas de velocidad ver las [ecuaciones que usa Accelstepper](https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/)
 
 No usamos librerías de Arduino en el programa de LabVIEW, manejamos la comunicación por serial con los subVI's de VISA y el protocolo de texto que armamos.
+
