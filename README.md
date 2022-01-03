@@ -18,8 +18,11 @@ Para controlar y automatizar el motor usamos un Arduino UNO, para la interfaz gr
 * Interrupciones de seguridad con microswitches de fin de recorrido (idem anterior)
 * Movimiento preseteado automático: se define principio y fin, velocidad de ida y vuelta y cantidad de repeticiones, el equipo hace todo el recorrido y mide automáticamente.
 * Movimiento escalonado: como el anterior, pero definiendo un "ancho" de pasos y deteniendose en cada paso (esto mejora la precisión angular).
-* Manejo de pulsadores y microswitches, con debounce*.
-* Corrección automática de backlash** al cambiar de dirección.
+* Manejo de pulsadores y microswitches, con debounce.*
+* Corrección automática de backlash.**
+
+\* Filtrado de ruidos en la señal de los pulsadores y microswitches.\
+\** Al cambiar de dirección el motor se puede "desacoplar" del eje y deja de transmitir la rotación hasta que se vuelve a acoplar.
 
 Usamos la librería [Accelstepper](https://www.airspayce.com/mikem/arduino/AccelStepper/) para controlar el motor y [digitalPinFast](https://github.com/TheFidax/digitalPinFast) para reducir el tiempo de ejecución.
 
