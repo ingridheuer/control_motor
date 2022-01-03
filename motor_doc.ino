@@ -161,6 +161,19 @@ void ISRend() {
   }
 }
 
+/*
+//Por ahi en algun momento sea util ver el tiempo de ejecucion del programa
+//Esto mide cuanto tarda el loop y lo muestra en el serial plotter del Arduino
+//Es bastante rudimentario pero sirve para tener una aproximacion
+//Si no lo estan usando dejar comentado esto y la parte que esta al final del loop
+
+bool Print = false; //Plotea el tiempo de ejecucion
+bool Print2 = false; //Plotea la posicion del motor
+unsigned long startTime;
+unsigned long endTime;
+unsigned long execTime;
+*/
+
 //=============
 // Setup y loop
 //=============
@@ -191,7 +204,8 @@ void setup() {
 }
 
 void loop() {
-
+  
+  //startTime = micros();
   readserial(); //se fija si llegaron mensajes
   if (newData == true) {
     strcpy(tempChars, receivedChars);
@@ -226,6 +240,18 @@ void loop() {
       leftButtonEnabled = true;
     }
   }
+    /*
+    endTime = micros();
+    execTime = endTime - startTime;
+    if (Print) {
+      Serial.print(execTime);
+      if (Print2) {
+        Serial.print("\t");
+        Serial.print(stepper.currentPosition());
+      }
+      Serial.println(",0,1000");
+    }
+  */
 }
 
 //===========
