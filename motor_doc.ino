@@ -29,7 +29,7 @@ AccelStepper stepper(1, pulsePin, dirPin);
 //Elegí un delay de 50ms para filtrar el ruido de los botones y microswitches
 const long debounceDelay = 50;
 
-//Inicializamos los objetos pulsadores (ver sección clase PushButton)
+//Inicializamos los objetos pulsadores (ver documentacion de clase PushButton)
 PushButton rightButton(rightPin, false, debounceDelay);
 PushButton leftButton(leftPin, false, debounceDelay);
 PushButton stopButton(stopPin, true, debounceDelay);
@@ -41,9 +41,9 @@ PushButton endMicroswitch(endSwitch, false, debounceDelay);
 digitalPinFast greenLed(greenPin);
 digitalPinFast redLed(redPin);
 
-//==========================================================
-// Variables globales (son accesibles para todo el programa)
-//==========================================================
+//==================
+// Defino variables
+//==================
 
 //Variables lógicas para habilitar y deshabilitar pulsadores o indicar estados del programa
 volatile bool rightButtonEnabled = true; //volatile porque los interrupts la pueden modificar
@@ -78,7 +78,7 @@ Recorrido recorrido;
 const long wait = 1000; //el tiempo de espera en cada punta
 
 //===================================
-//Estados que puede tomar el programa cuando está en modo automático discreto
+//Estados que puede tomar el programa cuando está en modo automático por pasos
 enum states2
 {
   stepping, waiting, stepDisabled
@@ -161,9 +161,9 @@ void ISRend() {
   }
 }
 
-//======================
-// Setup
-//======================
+//=============
+// Setup y loop
+//=============
 
 void setup() {
   Serial.begin(baudRate); //abrimos el puerto USB
@@ -190,9 +190,6 @@ void setup() {
   blinkLeds(3, 300);
 }
 
-//==========================
-// Ciclo principal
-//==========================
 void loop() {
 
   readserial(); //se fija si llegaron mensajes
@@ -230,9 +227,6 @@ void loop() {
     }
   }
 }
-//==========================
-// Fin del ciclo principal
-//==========================
 
 //===========
 // Funciones
@@ -243,7 +237,8 @@ void gohome() {
   homing = true;
   greenLed.digitalWriteFast(HIGH);
 
-  //avanza de a 133 pasos (se traducen en aprox. 2 grados) hasta activar el microswitch
+  //avanza de a 133 pasos (se traducen en aprox. 2 grados en nuestro dispositivo) hasta activar el microswitch
+  //ajustar este valor si hace falta
   while (!homeMicroswitch.isOn()) {
     stepper.move(-133);
     stepper.run();
@@ -253,6 +248,7 @@ void gohome() {
   stepper.setCurrentPosition(0); 
 
   //retrocede de a 20 pasos hasta que desactiva el microswitch
+  //ajustar este valor si hace falta
   while (homeMicroswitch.isOn()) {
     stepper.move(20);
     stepper.run();
@@ -272,7 +268,7 @@ void gohome() {
 }
 
 //Función de recorrido de ida y vuelta automático
-//Ver diagrama de estados en sección control y automatización
+//Ver diagrama de estados en sección control y automatización del informe (para el laboratorio)
 void automed() {
 
   //Variables para registrar el tiempo y la cantidad de vueltas
@@ -380,17 +376,24 @@ void autostep() {
 
 //Esta funcion toma la variable mensaje y evalúa el comando contra todos los comandos definidos para ver que función tiene que correr
 //Siempre envía una respuesta para cumplir el protocolo de command-response
+//La tabla de comandos y que significan esta en comandos.txt
+//Para agregar comandos nuevos simplemente agregar otra condicion, respetando el formato message.command = "COM" codigo del comando,seguido de lo que queremos que ejecute.
+//Para recibir parametros numericos usar message.long_input y message.integer_input. Cuidado con el tamaño de los numeros que guardan en cada variable.
+
 void serialCommands(Message message) {
   if (message.command == "MES") {
-    Serial.println(stepper.currentPosition());
+    //Medir posicion
+    Serial.println(stepper.currentPosition()); 
   }
   else if (message.command == "STP") {
+    //Stop
     Serial.println("STP");
     stepper.stop();
     state = canceled;
     state2 = stepDisabled;
   }
   else if (message.command == "SET") {
+    //Setpoint o posicion objetivo
     Serial.println("SET");
     rightButtonEnabled = false;
     leftButtonEnabled = false;
@@ -399,20 +402,24 @@ void serialCommands(Message message) {
     direc = getDirection();
   }
   else if (message.command == "ACC") {
+    //Aceleracion
     Serial.println("ACC");
     stepper.setAcceleration(message.integer_input);
   }
   else if (message.command == "VUE") {
+    //Posicion de partida y velocidad de vuelta
     Serial.println("VUE");
     recorrido.start = message.long_input;
     recorrido.speed_vuelta = message.integer_input;
   }
   else if (message.command == "IDA") {
+    //Posicion de llegada y velocidad de ida
     Serial.println("IDA");
     recorrido.finish = message.long_input;
     recorrido.speed_ida = message.integer_input;
   }
   else if (message.command == "AUT") {
+    //Configura e inicializa el movimiento automatico
     Serial.println("AUT");
     recorrido.total_loops = message.integer_input;
     stepper.moveTo(recorrido.start);
@@ -422,27 +429,34 @@ void serialCommands(Message message) {
     state = goingToStart;
   }
   else if (message.command == "BCK") {
+    //Imprime el backlash
     Serial.println(backlash);
   }
   else if (message.command == "HOM") {
+    //Homing
     Serial.println("HOM");
     gohome();
   }
   else if (message.command == "SCP") {
+    //Set current position (Definir manualmente la posicion)
     Serial.println("SCP");
     stepper.setCurrentPosition(message.long_input);
   }
   else if (message.command == "INF") {
+    //Info de la configuracion actual, **usar SOLO con el serial monitor del IDE**
     String info = getInfo();
     Serial.println(info);
   }
   else if (message.command == "IDN") {
-    Serial.println("Ingrid Heuer, Agosto 2021. Ver tabla de comandos en /escritorio/ingridmarco/control_motor/comandos");
+    Serial.println("Ver tabla de comandos en /escritorio/ingridmarco/control_motor/comandos"); //Mensaje para el laboratorio
   }
   else if (message.command == "DIR") {
+    //Imprime la direccion actual
     Serial.println(direc);
   }
-  else if (message.command == "BLK") {  //en lo posible no usar esto porque bloquea, es preferible usar REL
+  else if (message.command == "BLK") {
+    //Se mueve hasta long_input con velocidad integer_input BLOQUEANDO
+    //en lo posible no usar esto, es preferible usar REL
     Serial.println("BLK");
     stepper.setMaxSpeed(message.integer_input);
     stepper.move(message.long_input);
@@ -450,16 +464,19 @@ void serialCommands(Message message) {
     stepper.runToPosition();
   }
   else if (message.command == "SBK") {
+    //Definir manualmente el backlash
     backlash = message.long_input;
     Serial.println("SBK");
   }
   else if (message.command == "REL") {
+    //Se mueve long_input pasos relativos a la posicion actual, con velocidad integer_input
     Serial.println("REL");
     stepper.setMaxSpeed(message.integer_input);
     stepper.move(message.long_input);
     direc = getDirection();
   }
   else if (message.command == "STE") {
+    //Configura e inicializa el movimiento automatico por pasos
     Serial.println("STE");
     step_lenght = message.integer_input;
     total_lenght = message.long_input;
@@ -558,51 +575,12 @@ Message parseData() {
   return newMessage;
 }
 
-//=========
-// Extras
-//=========
-
-String getInfo() {
-  const String string1 = "Step state: ",
-               string2 = "Buttons State ",
-               string3 = "BAUD rate: ",
-               string4 = "Recorrido: ",
-               string5 = "Start, Finish: ",
-               string6 = "Vel. ida, Vel. vuelta: ",
-               espacio = " ",
-               endl = "\n";
-
-  String info = string1 + state2 + endl
-                + string2 + rightButtonEnabled + leftButtonEnabled + endl
-                + string3 + baudRate + endl
-                + string4 + endl
-                + string5 + recorrido.start + espacio + recorrido.finish + endl
-                + string6 + recorrido.speed_ida + espacio + recorrido.speed_vuelta + endl;
-  return info;
-}
-
-//Esta funcion prende y apaga los leds del gabinete
-//tomando como argumentos el numero de veces y el intervalo de tiempo
-void blinkLeds(const int num_blinks, const long interval) {
-  long time_ = millis();
-  int blinks = 0;
-  while (blinks < num_blinks) {
-    while ((millis() - time_) < interval) {
-      redLed.digitalWriteFast(HIGH);
-      greenLed.digitalWriteFast(HIGH);
-    }
-    time_ = millis();
-    while ((millis() - time_) < interval) {
-      redLed.digitalWriteFast(LOW);
-      greenLed.digitalWriteFast(LOW);
-    }
-    time_ = millis();
-    blinks++;
-  }
-}
+//==================================
+//Correccion de direccion y backlash
+//==================================
 
 //Esta funcion calcula la dirección actual del motor
-//Hay que correrla cada vez que se usa un comando que cambie la posición objetivo
+//Hay que correrla cada vez que se usa un comando que pueda cambiar la posición objetivo
 direccion getDirection() {
   if (stepper.distanceToGo() > 0) {
     return DER;
@@ -615,7 +593,7 @@ direccion getDirection() {
   }
 }
 
-//Esta función se fija si la dirección cambió y avisa al resto del código si hay que corregirla o no
+//Esta función se fija si la dirección cambió y avisa al resto del programa si hay que corregirla o no
 void updateDirection() {
   static direccion old_direc = DER;  //la primer correción no se va a hacer porque no tiene calibrado el backlash asi que no importa esto
 
@@ -652,5 +630,51 @@ void adjustBacklash() {
     }
   }
 }
+
+
+//=========
+// Extras
+//=========
+
+//Esta funcion prende y apaga los leds del gabinete
+//tomando como argumentos el numero de veces y el intervalo de tiempo
+void blinkLeds(const int num_blinks, const long interval) {
+  long time_ = millis();
+  int blinks = 0;
+  while (blinks < num_blinks) {
+    while ((millis() - time_) < interval) {
+      redLed.digitalWriteFast(HIGH);
+      greenLed.digitalWriteFast(HIGH);
+    }
+    time_ = millis();
+    while ((millis() - time_) < interval) {
+      redLed.digitalWriteFast(LOW);
+      greenLed.digitalWriteFast(LOW);
+    }
+    time_ = millis();
+    blinks++;
+  }
+}
+
+String getInfo() {
+  const String string1 = "Step state: ",
+               string2 = "Buttons State ",
+               string3 = "BAUD rate: ",
+               string4 = "Recorrido: ",
+               string5 = "Start, Finish: ",
+               string6 = "Vel. ida, Vel. vuelta: ",
+               espacio = " ",
+               endl = "\n";
+
+  String info = string1 + state2 + endl
+                + string2 + rightButtonEnabled + leftButtonEnabled + endl
+                + string3 + baudRate + endl
+                + string4 + endl
+                + string5 + recorrido.start + espacio + recorrido.finish + endl
+                + string6 + recorrido.speed_ida + espacio + recorrido.speed_vuelta + endl;
+  return info;
+}
+
+
 
 
