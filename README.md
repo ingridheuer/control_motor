@@ -46,8 +46,7 @@ En la carpeta labview está el main vi y los subvi, dejarlos todos juntos en la 
 Asegurarse de que el Arduino esté conectado vía USB antes de iniciar el programa. Nota: si el gabinete está apagado, el arduino va a funcionar igual por la corriente del USB, si se prende después el gabinete no pasa nada pero el Arduino se va a reiniciar.
 
 Abrir el programa motor_main.vi, el front panel debería ser el siguiente:
-![![front_panel](https://user-images.githubusercontent.com/61297025/161288647-a21dee02-30e8-41f6-9fea-3176864c70d3.PNG)
-]()
+![front panel](front_panel.PNG?raw=true "Title")
 
 El recuadro verde que dice "Status" indica si se conectó con el arduino correctamente. Además cuando el arduino se enciende, parpadean las luces del gabinete 3 veces.
 
