@@ -34,7 +34,8 @@ No usamos librerías de Arduino en el programa de LabVIEW, manejamos la comunica
 
 
 ## Instalación:
-Se requiere tener instalado previamente Arduino IDE y LabVIEW versión 2016 o posterior.  
+Se requiere tener instalado previamente Arduino IDE y LabVIEW versión 2016 o posterior. Además se requieren las librerías AccelStepper y DigitalPinFast, ambas se pueden instalar desde Arduino IDE.
+
 Descargar la carpeta PushButton en el directorio de librerías de arduino (/Arduino/libraries). Funciona como una pequeña "librería" para manejar los pulsadores del gabinete.  
 Descargar el archivo motor.ino en la carpeta de sketches de arduino (/Arduino/sketchbook).  
 En la carpeta labview está el main vi y los subvi, dejarlos todos juntos en la misma carpeta.
