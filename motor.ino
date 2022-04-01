@@ -567,7 +567,7 @@ void readserial() {
         }
       }
       else {
-        receivedChars[ndx] = '\0'; // terminate the string
+        receivedChars[ndx] = '\0';
         recvInProgress = false;
         ndx = 0;
         newData = true;
