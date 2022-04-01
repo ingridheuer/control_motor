@@ -62,8 +62,8 @@ En el recuadro de configuración general se puede elegir la velocidad de giro, l
 ### Adquisición:
 Para empezar la adquisición de datos activar el botón "adquirir ángulo". Se va a ver en tiempo real el ángulo de rotación del motor en el recuadro negro de arriba a la derecha.  
 Para automatizar la rotación hay dos opciones:  
-Movimiento continuo: configurar el principio y fin de recorrido, velocidades de ida y vuelta y cantidad de repeticiones en el recuadro de "Automático Continuo". El electroimán va a hacer un barrido "continuo".  
-Automático discreto: el electroimán se mueve de a pasos de ancho constante, mejora la adquisición. Configurar en "total" el ángulo total que se quiere barrer y en "paso" el ancho de los pasos (en grados).
+* Movimiento continuo: configurar el principio y fin de recorrido, velocidades de ida y vuelta y cantidad de repeticiones en el recuadro de "Automático Continuo". El electroimán va a hacer un barrido "continuo".  
+* Automático discreto: el electroimán se mueve de a pasos de ancho constante, mejora la adquisición. Configurar en "total" el ángulo total que se quiere barrer y en "paso" el ancho de los pasos (en grados).
 
 Para adquirir y guardar los datos (junto con los datos de los demás equipos), abrir este programa junto con el de Juan. Cuando se quiere medir, activar el botón de "adquirir ángulo" y después iniciar el programa de Juan.
 
