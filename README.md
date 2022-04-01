@@ -34,12 +34,9 @@ No usamos librerías de Arduino en el programa de LabVIEW, manejamos la comunica
 
 
 ## Instalación:
-Se requiere tener instalado previamente Arduino IDE y LabVIEW versión 2016 o posterior.
-
-Descargar la carpeta PushButton en el directorio de librerías de arduino (/Arduino/libraries). Funciona como una pequeña "librería" para manejar los pulsadores del gabinete. 
-
-Descargar el archivo motor.ino en la carpeta de sketches de arduino (/Arduino/sketchbook).
-
+Se requiere tener instalado previamente Arduino IDE y LabVIEW versión 2016 o posterior.  
+Descargar la carpeta PushButton en el directorio de librerías de arduino (/Arduino/libraries). Funciona como una pequeña "librería" para manejar los pulsadores del gabinete.  
+Descargar el archivo motor.ino en la carpeta de sketches de arduino (/Arduino/sketchbook).  
 En la carpeta labview está el main vi y los subvi, dejarlos todos juntos en la misma carpeta.
 
 ## Uso desde LabVIEW:
@@ -64,8 +61,8 @@ En el recuadro de configuración general se puede elegir la velocidad de giro, l
 
 ### Adquisición:
 Para empezar la adquisición de datos activar el botón "adquirir ángulo". Se va a ver en tiempo real el ángulo de rotación del motor en el recuadro negro de arriba a la derecha.  
-Para automatizar la rotación hay dos opciones:
-Movimiento continuo: configurar el principio y fin de recorrido, velocidades de ida y vuelta y cantidad de repeticiones en el recuadro de "Automático Continuo". El electroimán va a hacer un barrido "continuo".
+Para automatizar la rotación hay dos opciones:  
+Movimiento continuo: configurar el principio y fin de recorrido, velocidades de ida y vuelta y cantidad de repeticiones en el recuadro de "Automático Continuo". El electroimán va a hacer un barrido "continuo".  
 Automático discreto: el electroimán se mueve de a pasos de ancho constante, mejora la adquisición. Configurar en "total" el ángulo total que se quiere barrer y en "paso" el ancho de los pasos (en grados).
 
 Para adquirir y guardar los datos (junto con los datos de los demás equipos), abrir este programa junto con el de Juan. Cuando se quiere medir, activar el botón de "adquirir ángulo" y después iniciar el programa de Juan.
