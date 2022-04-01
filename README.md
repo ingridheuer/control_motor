@@ -63,7 +63,7 @@ Las funciones de los botones son:
 En el recuadro de configuración general se puede elegir la velocidad de giro, la frecuencia de adquisición y el microstep. El microstep se debe configurar solo si se cambió desde el driver del motor. El botón de backlash nos dice cual es el último backlash que se midió en la calibración.
 
 ### Adquisición:
-Para empezar la adquisición de datos activar el botón "adquirir ángulo". Se va a ver en tiempo real el ángulo de rotación del motor en el recuadro negro de arriba a la derecha. 
+Para empezar la adquisición de datos activar el botón "adquirir ángulo". Se va a ver en tiempo real el ángulo de rotación del motor en el recuadro negro de arriba a la derecha.  
 Para automatizar la rotación hay dos opciones:
 Movimiento continuo: configurar el principio y fin de recorrido, velocidades de ida y vuelta y cantidad de repeticiones en el recuadro de "Automático Continuo". El electroimán va a hacer un barrido "continuo".
 Automático discreto: el electroimán se mueve de a pasos de ancho constante, mejora la adquisición. Configurar en "total" el ángulo total que se quiere barrer y en "paso" el ancho de los pasos (en grados).
