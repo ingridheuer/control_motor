@@ -3,6 +3,8 @@
 ## About:
 
 Este programa es parte de un proyecto de laboratorio 6 y 7, donde diseñamos un sistema para controlar la rotación de un electroimán que se usa para experimentos de superconductividad. 
+En [este link](https://docs.google.com/presentation/d/1ADe-yI5Er1dkhw-3JYb_6tw6wtHRYmAECY5c9VhcFX0/edit?usp=sharing) se puede ver la presentación completa de este trabajo en la Reunión Anual de la Asociación Física Argentina.
+
 Las mediciones se realizaban girando el electroimán manualmente, lo cual era muy tedioso y complicaba la adquisición de datos.
 Nosotros diseñamos un sistema mecánico con un motor para rotar la plataforma, este programa se encarga de controlar ese motor (entre otras cosas).
 
